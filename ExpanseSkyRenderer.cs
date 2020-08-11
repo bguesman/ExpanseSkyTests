@@ -11,6 +11,7 @@ class ExpanseSkyRenderer : SkyRenderer
     /********************************************************************************/
 
     public static readonly int _atmosphereThicknessID = Shader.PropertyToID("_atmosphereThickness");
+    public static readonly int _atmosphereRadiusID = Shader.PropertyToID("_atmosphereRadius");
     public static readonly int _planetRadiusID = Shader.PropertyToID("_planetRadius");
     public static readonly int _groundColorTextureID = Shader.PropertyToID("_groundColorTexture");
     public static readonly int _groundTintID = Shader.PropertyToID("_groundTint");
@@ -32,6 +33,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _ozoneDensityID = Shader.PropertyToID("_ozoneDensity");
     public static readonly int _skyTintID = Shader.PropertyToID("_skyTint");
     public static readonly int _starAerosolScatterMultiplierID = Shader.PropertyToID("_starAerosolScatterMultiplier");
+    public static readonly int _limbDarkeningID = Shader.PropertyToID("_limbDarkening");
     public static readonly int _numberOfSamplesID = Shader.PropertyToID("_numberOfSamples");
     public static readonly int _useImportanceSamplingID = Shader.PropertyToID("_useImportanceSampling");
     public static readonly int _useCubicApproximationID = Shader.PropertyToID("_useCubicApproximation");
@@ -62,9 +64,7 @@ class ExpanseSkyRenderer : SkyRenderer
     /* Transmittance table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
      * h (x dimension): the height of the camera.
-     * phi (y dimension): the zenith angle of the viewing direction.
-     * TODO: Physically based sky has two tables here... why? One for
-     * updates perhaps? */
+     * phi (y dimension): the zenith angle of the viewing direction. */
     RTHandle[]                   m_TransmittanceTables;
 
     /* Single scattering table. Leverages spherical symmetry of the atmosphere,
@@ -163,7 +163,6 @@ class ExpanseSkyRenderer : SkyRenderer
         m_SingleScatteringTables[1] = null;
     }
 
-    /* TODO: only include things actually required by precompute shader here. */
     void SetGlobalConstants(CommandBuffer cmd, BuiltinSkyParameters builtinParams) {
 
         var expanseSky = builtinParams.skySettings as ExpanseSky;
@@ -171,6 +170,7 @@ class ExpanseSkyRenderer : SkyRenderer
         /* Set the parameters that need to be used for sky table
          * precomputation, aka, everything in ExpanseSkyCommon.hlsl. */
         cmd.SetGlobalFloat(_atmosphereThicknessID, expanseSky.atmosphereThickness.value);
+        cmd.SetGlobalFloat(_atmosphereRadiusID, expanseSky.atmosphereThickness.value + expanseSky.planetRadius.value);
         cmd.SetGlobalFloat(_planetRadiusID, expanseSky.planetRadius.value);
         cmd.SetGlobalFloat(_aerosolCoefficientID, expanseSky.aerosolCoefficient.value);
         cmd.SetGlobalFloat(_scaleHeightAerosolsID, expanseSky.scaleHeightAerosols.value);
@@ -225,8 +225,6 @@ class ExpanseSkyRenderer : SkyRenderer
       }
     }
 
-    /* TODO: currently this is called once every frame. Need logic here
-     * to avoid updating every frame. */
     protected override bool Update(BuiltinSkyParameters builtinParams)
     {
       var expanseSky = builtinParams.skySettings as ExpanseSky;
@@ -236,9 +234,6 @@ class ExpanseSkyRenderer : SkyRenderer
 
         SetPrecomputeTextures();
 
-        /* TODO: there's a significant amount more logic that needs to go here
-         * I think, to get it all to sync up nicely. But for now, we'll
-         * ignore most of that. */
         PrecomputeTables(builtinParams.commandBuffer);
 
         m_LastPrecomputationParamHash = currentPrecomputationHash;
@@ -270,6 +265,7 @@ class ExpanseSkyRenderer : SkyRenderer
             m_PropertyBlock.SetFloat(_aerosolAnisotropyID, expanseSky.aerosolAnisotropy.value);
             m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
             m_PropertyBlock.SetFloat(_starAerosolScatterMultiplierID, expanseSky.starAerosolScatterMultiplier.value);
+            m_PropertyBlock.SetFloat(_limbDarkeningID, expanseSky.limbDarkening.value);
             m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value);
 
             m_PropertyBlock.SetVector(_WorldSpaceCameraPos1ID, builtinParams.worldSpaceCameraPos);

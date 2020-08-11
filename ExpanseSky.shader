@@ -32,7 +32,11 @@ Shader "HDRP/Sky/ExpanseSky"
   float _aerosolAnisotropy;
   float4 _skyTint;
   float _starAerosolScatterMultiplier;
+  float _limbDarkening;  /* TODO: make this per celestial body. */
   float _ditherAmount;
+
+  float _aerosolPhaseConstant;
+  float _airPhaseConstant;
 
   float3   _WorldSpaceCameraPos1;
   float4x4 _ViewMatrix1;
@@ -85,21 +89,21 @@ Shader "HDRP/Sky/ExpanseSky"
     return zenithIlluminance / solidAngle;
   }
 
-  /* TODO: make parameterizable and tweakable. */
-  float limbDarkening(float LdotV, float cosInner) {
+  float limbDarkening(float LdotV, float cosInner, float amount) {
+    /* amount = max(FLT_EPS, amount); */
     float centerToEdge = 1.0 - abs((LdotV - cosInner) / (1.0 - cosInner));
     float mu = sqrt(1.0 - centerToEdge * centerToEdge);
     float mu2 = mu * mu;
     float mu3 = mu2 * mu;
     float mu4 = mu2 * mu2;
     float mu5 = mu3 * mu2;
-    float3 a0 = 1 * float3 (0.34685, 0.26073, 0.15248);
-    float3 a1 = 1 * float3 (1.37539, 1.27428, 1.38517);
-    float3 a2 = 1 * float3 (-2.04425, -1.30352, -1.49615);
-    float3 a3 = 1 * float3 (2.70493, 1.47085, 1.99886);
-    float3 a4 = 1 * float3 (-1.94290, -0.96618, -1.48155);
-    float3 a5 = 1 * float3 (0.55999, 0.26384, 0.44119);
-    return a0 + a1 * mu + a2 * mu2 + a3 * mu3 + a4 * mu4 + a5 * mu5;
+    float3 a0 = float3 (0.34685, 0.26073, 0.15248);
+    float3 a1 = float3 (1.37539, 1.27428, 1.38517);
+    float3 a2 = float3 (-2.04425, -1.30352, -1.49615);
+    float3 a3 = float3 (2.70493, 1.47085, 1.99886);
+    float3 a4 = float3 (-1.94290, -0.96618, -1.48155);
+    float3 a5 = float3 (0.55999, 0.26384, 0.44119);
+    return max(0.0, pow(a0 + a1 * mu + a2 * mu2 + a3 * mu3 + a4 * mu4 + a5 * mu5, amount));
   }
 
   float3 RenderSky(Varyings i, float exposure, float3 jitter)
@@ -108,13 +112,9 @@ Shader "HDRP/Sky/ExpanseSky"
     float3 O = _WorldSpaceCameraPos1 - float3(0, -_planetRadius, 0);
     float3 d = normalize(-GetSkyViewDirWS(i.positionCS.xy) + jitter);
 
-    /* For efficiency, precompute the atmosphere radius. TODO: move this
-     * computation to C# side and pass a uniform variable. */
-    float atmosphereRadius = _planetRadius + _atmosphereThickness;
-
     /* See if we're looking at the ground or the sky. */
     float3 t_ground = intersectSphere(O, d, _planetRadius);
-    float3 t_atmo = intersectSphere(O, d, atmosphereRadius);
+    float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
     bool groundHit = t_ground.z >= 0.0 && (t_ground.x >= 0.0 || t_ground.y >= 0.0);
     bool atmoHit = t_atmo.z >= 0.0 && (t_atmo.x >= 0.0 || t_atmo.y >= 0.0);
 
@@ -162,7 +162,7 @@ Shader "HDRP/Sky/ExpanseSky"
         float3 lightColor = light.color;
         float3 luminance = computeCelestialBodyLuminance(lightColor, cosInner);
         if (LdotV >= cosInner) {
-          L0 += luminance * limbDarkening(LdotV, cosInner)
+          L0 += luminance * limbDarkening(LdotV, cosInner, _limbDarkening)
             * light.surfaceTint;
         }
       }
@@ -174,7 +174,7 @@ Shader "HDRP/Sky/ExpanseSky"
 
     /* Perform the transmittance table lookup attenuating direct lighting. */
     float2 transmittanceUV = mapTransmittanceCoordinates(r,
-      mu, atmosphereRadius, _planetRadius, t_hit, groundHit);
+      mu, _atmosphereRadius, _planetRadius, t_hit, groundHit);
     float3 T = SAMPLE_TEXTURE2D(_TransmittanceTable, s_linear_clamp_sampler,
       transmittanceUV);
 
@@ -200,31 +200,26 @@ Shader "HDRP/Sky/ExpanseSky"
       /* Take their dot product to get the cosine of the angle between them. */
       float nu  = clampCosine(dot(proj_L, proj_d));
 
-      /* TODO: appears unnecessary. */
-      nu = clamp(nu, mu * mu_l - sqrt((1.0 - mu * mu) * (1.0 - mu_l * mu_l)),
-         mu * mu_l + sqrt((1.0 - mu * mu) * (1.0 - mu_l * mu_l)));
-
       TexCoord5D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
-        atmosphereRadius, _planetRadius, t_hit, groundHit);
+        _atmosphereRadius, _planetRadius, t_hit, groundHit);
 
       float3 uvw0 = float3(ssCoord.x, ssCoord.y, ssCoord.z);
       float3 uvw1 = float3(ssCoord.x, ssCoord.y, ssCoord.w);
 
       float3 ssContrib0Air = SAMPLE_TEXTURE3D(_SingleScatteringTableAir,
-        s_linear_clamp_sampler, uvw0).rgb;
+        s_trilinear_clamp_sampler, uvw0).rgb;
       float3 ssContrib1Air = SAMPLE_TEXTURE3D(_SingleScatteringTableAir,
-        s_linear_clamp_sampler, uvw1).rgb;
+        s_trilinear_clamp_sampler, uvw1).rgb;
 
       float3 singleScatteringContributionAir = lerp(ssContrib0Air, ssContrib1Air, ssCoord.a);
 
       float3 ssContrib0Aerosol = SAMPLE_TEXTURE3D(_SingleScatteringTableAerosol,
-        s_linear_clamp_sampler, uvw0).rgb;
+        s_trilinear_clamp_sampler, uvw0).rgb;
       float3 ssContrib1Aerosol = SAMPLE_TEXTURE3D(_SingleScatteringTableAerosol,
-        s_linear_clamp_sampler, uvw1).rgb;
+        s_trilinear_clamp_sampler, uvw1).rgb;
 
       float3 singleScatteringContributionAerosol = lerp(ssContrib0Aerosol, ssContrib1Aerosol, ssCoord.a);
 
-      /* TODO: precompute the constant factors in C# and pass them in. */
       float dot_L_d = dot(L, d);
       float rayleighPhase = 3.f / (16.f * PI) * (1 + dot_L_d * dot_L_d);
       float miePhase = 3.f / (8.0 * PI) * ((1.f - g * g) * (1.f + dot_L_d * dot_L_d))

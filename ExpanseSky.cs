@@ -38,10 +38,6 @@ public class ExpanseSky : SkySettings
   [Tooltip("Specify a multiplier on the ground emissive texture.")]
   public ClampedFloatParameter groundEmissiveMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 100000.0f);
 
-  /* Sun Parameters. */
-  /* TODO: there won't be any of these, since we will use the values from
-  * the "celestial body" section of each directional light. */
-
   /* Night Sky Parameters. */
   [Tooltip("Specify the cubemap HDRP uses to render the sky.")]
   public CubemapParameter nightSkyHDRI = new CubemapParameter(null);
@@ -94,6 +90,9 @@ public class ExpanseSky : SkySettings
 
   [Tooltip("Makes the scattering of starlight due to aerosols artificially stronger or weaker.")]
   public ClampedFloatParameter starAerosolScatterMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 5.0f);
+
+  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is physically accurate. Higher values will darken more, lower values will darken less. A value of 0.0 will turn off the effect entirely.")]
+  public ClampedFloatParameter limbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
 
   /* Sampling. */
   [Tooltip("Specify the number of samples to use when raymarching.")]
@@ -148,9 +147,12 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + ozoneHeight.value.GetHashCode();
       hash = hash * 23 + ozoneDensity.value.GetHashCode();
       hash = hash * 23 + skyTint.value.GetHashCode();
+      hash = hash * 23 + starAerosolScatterMultiplier.value.GetHashCode();
+      hash = hash * 23 + limbDarkening.value.GetHashCode();
       hash = hash * 23 + numberOfSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
       hash = hash * 23 + useCubicApproximation.value.GetHashCode();
+      hash = hash * 23 + ditherAmount.value.GetHashCode();
     }
     return hash;
   }

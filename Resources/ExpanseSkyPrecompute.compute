@@ -34,9 +34,7 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
     float u_r = (id.x + 0.5f) / float(TRANSMITTANCE_TABLE_SIZE_H);
     float u_mu = (id.y + 0.5f) / float(TRANSMITTANCE_TABLE_SIZE_PHI);
 
-    float atmosphereRadius = _planetRadius + _atmosphereThickness;
-
-    float2 r_mu = unmapTransmittanceCoordinates(u_r, u_mu, atmosphereRadius,
+    float2 r_mu = unmapTransmittanceCoordinates(u_r, u_mu, _atmosphereRadius,
       _planetRadius);
 
     float3 O = float3(0, r_mu.x, 0);
@@ -44,7 +42,7 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
 
     /* See if we're looking at the ground or the sky. */
     float3 t_ground = intersectSphere(O, d, _planetRadius);
-    float3 t_atmo = intersectSphere(O, d, atmosphereRadius);
+    float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
     bool groundHit = floatGT(t_ground.z, 0.0) && (floatGT(t_ground.x, 0.0) || floatGT(t_ground.y, 0.0));
     bool atmoHit = floatGT(t_atmo.z, 0.0) && (floatGT(t_atmo.x, 0.0) || floatGT(t_atmo.y, 0.0));
 
@@ -95,10 +93,8 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
    float u_mu_l = saturate(texCoord / (float(zTexSize) - 1.0));
    float u_nu = saturate(texId / (float(zTexCount) - 1.0));
 
-   float atmosphereRadius = _planetRadius + _atmosphereThickness;
-
    float4 ssCoord = unmapSingleScatteringCoordinates(u_r, u_mu, u_mu_l, u_nu,
-     atmosphereRadius, _planetRadius);
+     _atmosphereRadius, _planetRadius);
 
    float3 O = float3(0, ssCoord.x, 0);
    float3 d = normalize(float3(sqrt(max(0.0, 1 - ssCoord.y * ssCoord.y)), ssCoord.y, 0));
@@ -107,7 +103,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 
    /* See if we're looking at the ground or the sky. */
    float3 t_ground = intersectSphere(O, d, _planetRadius);
-   float3 t_atmo = intersectSphere(O, d, atmosphereRadius);
+   float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
    bool groundHit = floatGT(t_ground.z, 0.0) && (floatGT(t_ground.x, 0.0) || floatGT(t_ground.y, 0.0));
    bool atmoHit = floatGT(t_atmo.z, 0.0) && (floatGT(t_atmo.x, 0.0) || floatGT(t_atmo.y, 0.0));
 
@@ -134,7 +130,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
      float3 samplePoint = O + d * sampleT * t;
 
      /* Trace a ray from the sample point to the light to check visibility. */
-     float3 t_light = intersectSphere(samplePoint, L, atmosphereRadius);
+     float3 t_light = intersectSphere(samplePoint, L, _atmosphereRadius);
      float3 t_light_ground = intersectSphere(samplePoint, L, _planetRadius);
      bool lightHit = floatGT(t_light.z, 0.0)
        && (floatGT(t_light.x, 0.0) || floatGT(t_light.y, 0.0));
@@ -154,9 +150,9 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
        /* Compute transmittance from O to sample point, and then from sample
         * point through to the light hit. */
        float2 oToSample = mapTransmittanceCoordinates(length(O),
-         ssCoord.y, atmosphereRadius, _planetRadius, t, groundHit);
+         ssCoord.y, _atmosphereRadius, _planetRadius, t, groundHit);
        float2 sampleToL = mapTransmittanceCoordinates(length(samplePoint),
-        clampCosine(dot(normalize(samplePoint), L)), atmosphereRadius, _planetRadius,
+        clampCosine(dot(normalize(samplePoint), L)), _atmosphereRadius, _planetRadius,
         max(t_light.x, t_light.y), lightGroundHit);
 
        float3 T_oToSample = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
@@ -169,7 +165,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
         * the transmittance from the sample point to the atmosphere. */
        if (!groundHit) {
          float2 sampleOut = mapTransmittanceCoordinates(length(samplePoint),
-           clampCosine(dot(normalize(samplePoint), d)), atmosphereRadius, _planetRadius,
+           clampCosine(dot(normalize(samplePoint), d)), _atmosphereRadius, _planetRadius,
            length(hitPoint - samplePoint), false);
          float3 T_sampleOut = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
            s_linear_clamp_sampler, sampleOut, 0).rgb;

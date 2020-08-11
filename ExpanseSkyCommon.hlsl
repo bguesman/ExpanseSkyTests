@@ -10,6 +10,7 @@
 CBUFFER_START(ExpanseSky)
 float _atmosphereThickness;
 float _planetRadius;
+float _atmosphereRadius;
 float _aerosolCoefficient;
 float _scaleHeightAerosols;
 float _aerosolDensity;
@@ -68,6 +69,7 @@ CBUFFER_END
 /* Sampler for tables. */
 #ifndef UNITY_SHADER_VARIABLES_INCLUDED
     SAMPLER(s_linear_clamp_sampler);
+    SAMPLER(s_trilinear_clamp_sampler);
 #endif
 
 /* Some mathematical constants that are good to have pre-computed. */
@@ -224,11 +226,6 @@ float4 unmapSingleScatteringCoordinates(float u_r, float u_mu, float u_mu_l,
   float mu_l = clampCosine((log(1.0 - (u_mu_l * (1 - exp(-3.6)))) + 0.6) / -3.0);
 
   float nu = clampCosine((u_nu * 2.0) - 1.0);
-
-  /* TODO: this appears to be unnecessary. */
-  nu = clamp(nu,
-          r_mu.y * mu_l - sqrt((1.0 - r_mu.y * r_mu.y) * (1.0 - mu_l * mu_l)),
-          r_mu.y * mu_l + sqrt((1.0 - r_mu.y * r_mu.y) * (1.0 - mu_l * mu_l)));
 
   // naive mapping of u_mu and u_mu_l:
   /* TODO: make togglable? could slow things down a lot! but we already have
