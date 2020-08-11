@@ -154,4 +154,28 @@ public class ExpanseSky : SkySettings
     }
     return hash;
   }
+
+  public int GetPrecomputationHashCode()
+  {
+    int hash = base.GetHashCode();
+    unchecked
+    {
+      hash = hash * 23 + atmosphereThickness.value.GetHashCode();
+      hash = hash * 23 + planetRadius.value.GetHashCode();
+      hash = hash * 23 + aerosolCoefficient.value.GetHashCode();
+      hash = hash * 23 + scaleHeightAerosols.value.GetHashCode();
+      hash = hash * 23 + aerosolDensity.value.GetHashCode();
+      hash = hash * 23 + airCoefficients.value.GetHashCode();
+      hash = hash * 23 + scaleHeightAir.value.GetHashCode();
+      hash = hash * 23 + airDensity.value.GetHashCode();
+      hash = hash * 23 + ozoneCoefficients.value.GetHashCode();
+      hash = hash * 23 + ozoneThickness.value.GetHashCode();
+      hash = hash * 23 + ozoneHeight.value.GetHashCode();
+      hash = hash * 23 + ozoneDensity.value.GetHashCode();
+      hash = hash * 23 + numberOfSamples.value.GetHashCode();
+      hash = hash * 23 + useImportanceSampling.value.GetHashCode();
+      hash = hash * 23 + useCubicApproximation.value.GetHashCode();
+    }
+    return hash;
+  }
 }

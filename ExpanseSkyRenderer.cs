@@ -50,15 +50,14 @@ class ExpanseSkyRenderer : SkyRenderer
     /************************** End Shader Variable ID's ****************************/
     /********************************************************************************/
 
-    /* Taking some pointers from PhysicallyBasedSky on how to set up these
-     * tables. */
+    /* Dimensions of precomputed tables. */
     const int TransmittanceTableSizeH = 32;
     const int TransmittanceTableSizePhi = 128;
 
     const int SingleScatteringTableSizeH = 32;
-    const int SingleScatteringTableSizePhi = 256;
-    const int SingleScatteringTableSizePhiL = 64;
-    const int SingleScatteringTableSizeNu = 16;
+    const int SingleScatteringTableSizePhi = 128;
+    const int SingleScatteringTableSizePhiL = 32;
+    const int SingleScatteringTableSizeNu = 64;
 
     /* Transmittance table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
@@ -79,6 +78,11 @@ class ExpanseSkyRenderer : SkyRenderer
     static ComputeShader         s_PrecomputeCS;
 
     static GraphicsFormat s_ColorFormat = GraphicsFormat.R16G16B16A16_SFloat;
+
+    /* Use the same strategy as Physically Based Sky to determine when we
+     * need to update our tables---compute a hash of the relevant parameters
+     * every frame and check for differences. */
+    int m_LastPrecomputationParamHash;
 
     RTHandle AllocateTransmittanceTable(int index)
     {
@@ -163,19 +167,13 @@ class ExpanseSkyRenderer : SkyRenderer
     void SetGlobalConstants(CommandBuffer cmd, BuiltinSkyParameters builtinParams) {
 
         var expanseSky = builtinParams.skySettings as ExpanseSky;
-        /* Set the shader uniform variables. */
+
+        /* Set the parameters that need to be used for sky table
+         * precomputation, aka, everything in ExpanseSkyCommon.hlsl. */
         cmd.SetGlobalFloat(_atmosphereThicknessID, expanseSky.atmosphereThickness.value);
         cmd.SetGlobalFloat(_planetRadiusID, expanseSky.planetRadius.value);
-        cmd.SetGlobalTexture(_groundColorTextureID, expanseSky.groundColorTexture.value);
-        cmd.SetGlobalVector(_groundTintID, expanseSky.groundTint.value);
-        cmd.SetGlobalTexture(_groundEmissiveTextureID, expanseSky.groundEmissiveTexture.value);
-        cmd.SetGlobalFloat(_groundEmissiveMultiplierID, expanseSky.groundEmissiveMultiplier.value);
-        cmd.SetGlobalTexture(_nightSkyHDRIID, expanseSky.nightSkyHDRI.value);
-        cmd.SetGlobalVector(_nightTintID, expanseSky.nightTint.value);
-        cmd.SetGlobalFloat(_nightIntensityID, expanseSky.nightIntensity.value);
         cmd.SetGlobalFloat(_aerosolCoefficientID, expanseSky.aerosolCoefficient.value);
         cmd.SetGlobalFloat(_scaleHeightAerosolsID, expanseSky.scaleHeightAerosols.value);
-        cmd.SetGlobalFloat(_aerosolAnisotropyID, expanseSky.aerosolAnisotropy.value);
         cmd.SetGlobalFloat(_aerosolDensityID, expanseSky.aerosolDensity.value);
         cmd.SetGlobalVector(_airCoefficientsID, expanseSky.airCoefficients.value);
         cmd.SetGlobalFloat(_scaleHeightAirID, expanseSky.scaleHeightAir.value);
@@ -184,16 +182,9 @@ class ExpanseSkyRenderer : SkyRenderer
         cmd.SetGlobalFloat(_ozoneThicknessID, expanseSky.ozoneThickness.value);
         cmd.SetGlobalFloat(_ozoneHeightID, expanseSky.ozoneHeight.value);
         cmd.SetGlobalFloat(_ozoneDensityID, expanseSky.ozoneDensity.value);
-        cmd.SetGlobalVector(_skyTintID, expanseSky.skyTint.value);
-        cmd.SetGlobalFloat(_starAerosolScatterMultiplierID, expanseSky.starAerosolScatterMultiplier.value);
         cmd.SetGlobalInt(_numberOfSamplesID, expanseSky.numberOfSamples.value);
         cmd.SetGlobalFloat(_useImportanceSamplingID, expanseSky.useImportanceSampling.value ? 1f : 0f);
         cmd.SetGlobalFloat(_useCubicApproximationID, expanseSky.useCubicApproximation.value ? 1f : 0f);
-        cmd.SetGlobalFloat(_ditherAmountID, expanseSky.ditherAmount.value);
-
-        cmd.SetGlobalVector(_WorldSpaceCameraPos1ID, builtinParams.worldSpaceCameraPos);
-        cmd.SetGlobalMatrix(_ViewMatrix1ID, builtinParams.viewMatrix);
-        cmd.SetGlobalMatrix(_PixelCoordToViewDirWS, builtinParams.pixelCoordToViewDirMatrix);
 
         /* Set the texture for the actual sky shader. */
         cmd.SetGlobalTexture(_transmittanceTableID, m_TransmittanceTables[0]);
@@ -234,15 +225,24 @@ class ExpanseSkyRenderer : SkyRenderer
       }
     }
 
+    /* TODO: currently this is called once every frame. Need logic here
+     * to avoid updating every frame. */
     protected override bool Update(BuiltinSkyParameters builtinParams)
     {
-      SetGlobalConstants(builtinParams.commandBuffer, builtinParams);
+      var expanseSky = builtinParams.skySettings as ExpanseSky;
+      int currentPrecomputationHash = expanseSky.GetPrecomputationHashCode();
+      if (currentPrecomputationHash != m_LastPrecomputationParamHash) {
+        SetGlobalConstants(builtinParams.commandBuffer, builtinParams);
 
-      SetPrecomputeTextures();
+        SetPrecomputeTextures();
 
-      /* TODO: there's a significant amount more logic that needs to go here.
-       * But for now, we'll ignore most of that. */
-      PrecomputeTables(builtinParams.commandBuffer);
+        /* TODO: there's a significant amount more logic that needs to go here
+         * I think, to get it all to sync up nicely. But for now, we'll
+         * ignore most of that. */
+        PrecomputeTables(builtinParams.commandBuffer);
+
+        m_LastPrecomputationParamHash = currentPrecomputationHash;
+      }
 
       return builtinParams.skySettings.updateMode != EnvironmentUpdateMode.Realtime;
     }
@@ -259,39 +259,22 @@ class ExpanseSkyRenderer : SkyRenderer
 
             int passID = renderForCubemap ? m_RenderCubemapID : m_RenderFullscreenSkyID;
 
-            SetGlobalConstants(builtinParams.commandBuffer, builtinParams);
-
             /* Set the shader uniform variables. */
-            // m_PropertyBlock.SetFloat(_atmosphereThicknessID, expanseSky.atmosphereThickness.value);
-            // m_PropertyBlock.SetFloat(_planetRadiusID, expanseSky.planetRadius.value);
-            // m_PropertyBlock.SetTexture(_groundColorTextureID, expanseSky.groundColorTexture.value);
-            // m_PropertyBlock.SetVector(_groundTintID, expanseSky.groundTint.value);
-            // m_PropertyBlock.SetTexture(_groundEmissiveTextureID, expanseSky.groundEmissiveTexture.value);
-            // m_PropertyBlock.SetFloat(_groundEmissiveMultiplierID, expanseSky.groundEmissiveMultiplier.value);
-            // m_PropertyBlock.SetTexture(_nightSkyHDRIID, expanseSky.nightSkyHDRI.value);
-            // m_PropertyBlock.SetVector(_nightTintID, expanseSky.nightTint.value);
-            // m_PropertyBlock.SetFloat(_nightIntensityID, expanseSky.nightIntensity.value);
-            // m_PropertyBlock.SetFloat(_aerosolCoefficientID, expanseSky.aerosolCoefficient.value);
-            // m_PropertyBlock.SetFloat(_scaleHeightAerosolsID, expanseSky.scaleHeightAerosols.value);
-            // m_PropertyBlock.SetFloat(_aerosolAnisotropyID, expanseSky.aerosolAnisotropy.value);
-            // m_PropertyBlock.SetFloat(_aerosolDensityID, expanseSky.aerosolDensity.value);
-            // m_PropertyBlock.SetVector(_airCoefficientsID, expanseSky.airCoefficients.value);
-            // m_PropertyBlock.SetFloat(_scaleHeightAirID, expanseSky.scaleHeightAir.value);
-            // m_PropertyBlock.SetFloat(_airDensityID, expanseSky.airDensity.value);
-            // m_PropertyBlock.SetVector(_ozoneCoefficientsID, expanseSky.ozoneCoefficients.value);
-            // m_PropertyBlock.SetFloat(_ozoneThicknessID, expanseSky.ozoneThickness.value);
-            // m_PropertyBlock.SetFloat(_ozoneHeightID, expanseSky.ozoneHeight.value);
-            // m_PropertyBlock.SetFloat(_ozoneDensityID, expanseSky.ozoneDensity.value);
-            // m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
-            // m_PropertyBlock.SetFloat(_starAerosolScatterMultiplierID, expanseSky.starAerosolScatterMultiplier.value);
-            // m_PropertyBlock.SetInt(_numberOfSamplesID, expanseSky.numberOfSamples.value);
-            // m_PropertyBlock.SetFloat(_useImportanceSamplingID, expanseSky.useImportanceSampling.value ? 1f : 0f);
-            // m_PropertyBlock.SetFloat(_useCubicApproximationID, expanseSky.useCubicApproximation.value ? 1f : 0f);
-            // m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value);
-            //
-            // m_PropertyBlock.SetVector(_WorldSpaceCameraPos1ID, builtinParams.worldSpaceCameraPos);
-            // m_PropertyBlock.SetMatrix(_ViewMatrix1ID, builtinParams.viewMatrix);
-            // m_PropertyBlock.SetMatrix(_PixelCoordToViewDirWS, builtinParams.pixelCoordToViewDirMatrix);
+            m_PropertyBlock.SetTexture(_groundColorTextureID, expanseSky.groundColorTexture.value);
+            m_PropertyBlock.SetVector(_groundTintID, expanseSky.groundTint.value);
+            m_PropertyBlock.SetTexture(_groundEmissiveTextureID, expanseSky.groundEmissiveTexture.value);
+            m_PropertyBlock.SetFloat(_groundEmissiveMultiplierID, expanseSky.groundEmissiveMultiplier.value);
+            m_PropertyBlock.SetTexture(_nightSkyHDRIID, expanseSky.nightSkyHDRI.value);
+            m_PropertyBlock.SetVector(_nightTintID, expanseSky.nightTint.value);
+            m_PropertyBlock.SetFloat(_nightIntensityID, expanseSky.nightIntensity.value);
+            m_PropertyBlock.SetFloat(_aerosolAnisotropyID, expanseSky.aerosolAnisotropy.value);
+            m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
+            m_PropertyBlock.SetFloat(_starAerosolScatterMultiplierID, expanseSky.starAerosolScatterMultiplier.value);
+            m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value);
+
+            m_PropertyBlock.SetVector(_WorldSpaceCameraPos1ID, builtinParams.worldSpaceCameraPos);
+            m_PropertyBlock.SetMatrix(_ViewMatrix1ID, builtinParams.viewMatrix);
+            m_PropertyBlock.SetMatrix(_PixelCoordToViewDirWS, builtinParams.pixelCoordToViewDirMatrix);
 
             CoreUtils.DrawFullScreen(builtinParams.commandBuffer, m_ExpanseSkyMaterial, m_PropertyBlock, passID);
         }
