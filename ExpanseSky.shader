@@ -102,11 +102,11 @@ Shader "HDRP/Sky/ExpanseSky"
     return a0 + a1 * mu + a2 * mu2 + a3 * mu3 + a4 * mu4 + a5 * mu5;
   }
 
-  float3 RenderSky(Varyings i, float exposure)
+  float3 RenderSky(Varyings i, float exposure, float3 jitter)
   {
     /* Get the origin point and sample direction. */
     float3 O = _WorldSpaceCameraPos1 - float3(0, -_planetRadius, 0);
-    float3 d = normalize(-GetSkyViewDirWS(i.positionCS.xy));
+    float3 d = normalize(-GetSkyViewDirWS(i.positionCS.xy) + jitter);
 
     /* For efficiency, precompute the atmosphere radius. TODO: move this
      * computation to C# side and pass a uniform variable. */
@@ -247,13 +247,23 @@ Shader "HDRP/Sky/ExpanseSky"
 
   float4 FragBaking(Varyings input) : SV_Target
   {
-    return float4(RenderSky(input, 1.0), 1.0);
+    return float4(RenderSky(input, 1.0, float3(0, 0, 0)), 1.0);
   }
 
   float4 FragRender(Varyings input) : SV_Target
   {
     //UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
-    return float4(RenderSky(input, GetCurrentExposureMultiplier()), 1.0);
+    float exposure = GetCurrentExposureMultiplier();
+    return float4(RenderSky(input, exposure, float3(0, 0, 0)), 1.0);
+    /* HACK: Hacky 8x MSAA. */
+    /* return float4((RenderSky(input, exposure, float3(0, 0, 0))
+      + RenderSky(input, exposure, float3(0.0005, 0.0005, 0.0005))
+      + RenderSky(input, exposure, float3(-0.0005, 0.0005, -0.0005))
+      + RenderSky(input, exposure, float3(0.0005, -0.0005, -0.0005))
+      + RenderSky(input, exposure, float3(-0.0003, -0.0001, 0.0005))
+      + RenderSky(input, exposure, float3(0.0001, 0.0002, 0.0005))
+      + RenderSky(input, exposure, float3(0.0005, -0.0005, 0.0005))
+      + RenderSky(input, exposure, float3(-0.0003, -0.0005, 0.0002))) / 8.0, 1.0); */
   }
 
   ENDHLSL
