@@ -13,6 +13,7 @@ float _planetRadius;
 float _atmosphereRadius;
 float _aerosolCoefficient;
 float _scaleHeightAerosols;
+float _aerosolAnisotropy;
 float _aerosolDensity;
 float4 _airCoefficients;
 float _scaleHeightAir;
@@ -23,7 +24,9 @@ float _ozoneHeight;
 float _ozoneDensity;
 int _numberOfSamples;
 bool _useImportanceSampling;
-bool _useCubicApproximation;
+
+/* Easier to type... */
+#define g _aerosolAnisotropy
 
 /* Redefine colors to float3's for efficiency, since Unity can only set
  * float4's. */
@@ -64,6 +67,18 @@ TEXTURE3D(_SingleScatteringTableAerosol);
 #define SINGLE_SCATTERING_TABLE_SIZE_PHI_L 32
 #define SINGLE_SCATTERING_TABLE_SIZE_NU 64
 
+/* Ground irradiance tables. Leverage spherical symmetry of the atmosphere,
+ * parameterized by:
+ * phi (x dimension): dot product between the surface normal and the
+ * light direction. */
+TEXTURE2D(_GroundIrradianceTableAir);
+TEXTURE2D(_GroundIrradianceTableAerosol);
+/* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
+ * be great to be able to set these as constants. I don't want to make them
+ * accessible because I haven't set up any way to reallocate these on the
+ * fly. */
+#define GROUND_IRRADIANCE_TABLE_SIZE 256
+
 CBUFFER_END
 
 /* Sampler for tables. */
@@ -103,6 +118,18 @@ bool floatGT(float a, float b) {
  * otherwise. */
 bool floatLT(float a, float b) {
   return a < b + FLT_EPSILON;
+}
+
+/* Given an index and total number of points, generates corresponding
+ * point on fibonacci hemi-sphere. */
+float3 fibonacciHemisphere(int i, int n) {
+  float i_mid = i + 0.5;
+  float cos_phi = 1 - i/float(n);
+  float sin_phi = sqrt(1 - cos_phi * cos_phi);
+  float theta = 2 * PI * i / GOLDEN_RATIO;
+  float cos_theta = cos(theta);
+  float sin_theta = sqrt(1 - cos_theta * cos_theta);
+  return float3(cos_theta * sin_phi, cos_phi, sin_theta * sin_phi);
 }
 
 /* Returns t values of ray intersection with sphere. Third value indicates
@@ -287,8 +314,7 @@ float2 generateLinearSampleFromIndex(int i, int numberOfSamples) {
 }
 
 /* Generates cubed "importance sample" location from a sample index.
- * Returns (sample, ds). TODO: this is a hack. Should really use an
- * actual importance sampler. */
+ * Returns (sample, ds). */
 float2 generateCubicSampleFromIndex(int i, int numberOfSamples) {
   float t_left = float(i) / float(_numberOfSamples);
   float t_middle = (float(i) + 0.5) / float(numberOfSamples);
@@ -299,119 +325,9 @@ float2 generateCubicSampleFromIndex(int i, int numberOfSamples) {
   return float2(t_middle, t_right - t_left);
 }
 
-/* Generates importance sample location for an exponential distribution from a
- * sample index and the distribution parameters.
- *
- * h_min and h_max are the minimum and maximum heights of the sample range.
- *
- * Returns (sample, ds). */
-float2 generateExponentialSampleFromIndex(int i, int numberOfSamples, float3
-  startPoint, float3 endPoint, float planetR, float scaleHeight) {
-  float3 p = startPoint;
-  float3 d = endPoint - startPoint;
-  float R = planetR;
-  float H = scaleHeight;
-  float pp = dot(p, p);
-  float pd = dot(p, d);
-  float dd = dot(d, d);
-
-  float u_min = exp(-(length(startPoint) - R)/H);
-  float u_max = exp(-(length(endPoint) - R)/H);
-  float u_diff = u_max - u_min;
-
-  float u_left = u_min
-    + (float(i) / float(numberOfSamples)) * u_diff;
-  float u_middle = u_min
-    + ((float(i) + 0.5) / float(numberOfSamples)) * u_diff;
-  float u_right = u_min
-    + ((float(i) + 1.0) / float(numberOfSamples)) * u_diff;
-
-  float A = dd;
-  float B = 2 * pd;
-  float3 C = float3(pp - ((R - H * log(u_left)) * (R - H * log(u_left))),
-                    pp - ((R - H * log(u_middle)) * (R - H * log(u_middle))),
-                    pp - ((R - H * log(u_right)) * (R - H * log(u_right))));
-
-  float3 discriminant = B * B - 4 * A * C;
-  /* Pretty sure this can never happen. */
-  if (discriminant.x < 0.0 || discriminant.y < 0.0
-    || discriminant.z < 0.0) {
-    return generateLinearSampleFromIndex(i, numberOfSamples);
-  }
-
-  float t_local_minimum = -pd / dd;
-  float u_local_minimum = exp(-(length(p + t_local_minimum * d) - R)/H);
-
-  float3 t_hi = (-B + sqrt(discriminant)) / (2.0 * A);
-  float3 t_lo = (-B - sqrt(discriminant)) / (2.0 * A);
-
-  float3 t = float3(0, 0, 0);
-
-  if (floatLT(t_local_minimum, 0.0)) {
-    t = t_hi;
-  } else if (floatGT(t_local_minimum, 1.0)) {
-    t = t_lo;
-  } else {
-    // return generateCubicSampleFromIndex(i, numberOfSamples);
-    if (u_left > u_local_minimum) {
-      t = t_lo.x;
-    } else {
-      t = t_hi.x;
-    }
-    if (u_middle > u_local_minimum) {
-      t.y = t_lo.y;
-    } else {
-      t.y = t_hi.y;
-    }
-    if (u_right > u_local_minimum) {
-      t.z = t_lo.z;
-    } else {
-      t.z = t_hi.z;
-    }
-  }
-
-  return saturate(float2(t.y, t.z - t.x));
-}
-
-/* TODO: set up importance sampling for these optical depth functions? */
 /* Computes the optical depth for an exponentially distributed layer. */
 float computeOpticalDepthExponential(float3 originPoint, float3 samplePoint,
   float planetR, float scaleHeight, float density) {
-  // Evaluate integral over curved planet with a midpoint integrator.
-  float3 d = samplePoint - originPoint;
-  float length_d = length(d);
-  float acc = 0.0;
-  float h_min = length(originPoint) - planetR;
-  float h_max = length(samplePoint) - planetR;
-  for (int i = 0; i < _numberOfSamples; i++) {
-    /* Compute where along the ray we're going to sample. */
-    float2 t_ds = float2(0, 0);
-    if (_useImportanceSampling) {
-      if (_useCubicApproximation) {
-        t_ds = generateCubicSampleFromIndex(i, _numberOfSamples);
-      } else {
-        t_ds = generateExponentialSampleFromIndex(i, _numberOfSamples,
-          originPoint, samplePoint, planetR, scaleHeight);
-      }
-    } else {
-      t_ds = generateLinearSampleFromIndex(i, _numberOfSamples);
-    }
-
-    /* Compute the point we're going to sample at. */
-    float3 pt = originPoint + (d * t_ds.x);
-
-    /* Accumulate the density at that point. */
-    acc += computeDensityExponential(pt, planetR, scaleHeight, density)
-      * t_ds.y * length_d;
-  }
-  return acc;
-}
-
-/* TODO: set up importance sampling for these optical depth functions? */
-/* Computes the optical depth for a layer distributed as a tent
- * function at specified height with specified thickness. */
-float computeOpticalDepthTent(float3 originPoint, float3 samplePoint,
-  float planetR, float height, float thickness, float density) {
   // Evaluate integral over curved planet with a midpoint integrator.
   float3 d = samplePoint - originPoint;
   float length_d = length(d);
@@ -429,10 +345,43 @@ float computeOpticalDepthTent(float3 originPoint, float3 samplePoint,
     float3 pt = originPoint + (d * t_ds.x);
 
     /* Accumulate the density at that point. */
+    acc += computeDensityExponential(pt, planetR, scaleHeight, density)
+      * t_ds.y * length_d;
+  }
+  return acc;
+}
+
+/* Computes the optical depth for a layer distributed as a tent
+ * function at specified height with specified thickness. */
+float computeOpticalDepthTent(float3 originPoint, float3 samplePoint,
+  float planetR, float height, float thickness, float density) {
+  // Evaluate integral over curved planet with a midpoint integrator.
+  float3 d = samplePoint - originPoint;
+  float length_d = length(d);
+  float acc = 0.0;
+  for (int i = 0; i < _numberOfSamples; i++) {
+    /* Compute where along the ray we're going to sample. For the ozone
+     * layer, it's much better to use the linearly distributed samples,
+     * as opposed to the cubically distributed ones. */
+    float2 t_ds = generateLinearSampleFromIndex(i, _numberOfSamples);
+
+    /* Compute the point we're going to sample at. */
+    float3 pt = originPoint + (d * t_ds.x);
+
+    /* Accumulate the density at that point. */
     acc += computeDensityTent(pt, planetR, height, thickness, density)
       * t_ds.y * length_d;
   }
   return acc;
+}
+
+float computeAirPhase(float dot_L_d) {
+  return 3.f / (16.f * PI) * (1 + dot_L_d * dot_L_d);
+}
+
+float computeAerosolPhase(float dot_L_d, float g) {
+  return 3.f / (8.0 * PI) * ((1.f - g * g) * (1.f + dot_L_d * dot_L_d))
+    / ((2.f + g * g) * pow(1.f + g * g - 2.f * g * dot_L_d, 1.5f));
 }
 
 #endif // EXPANSE_SKY_COMMON_INCLUDED

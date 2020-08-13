@@ -29,22 +29,16 @@ Shader "HDRP/Sky/ExpanseSky"
   TEXTURECUBE(_nightSkyHDRI);
   float4 _nightTint;
   float _nightIntensity;
-  float _aerosolAnisotropy;
   float4 _skyTint;
   float _starAerosolScatterMultiplier;
   float _limbDarkening;  /* TODO: make this per celestial body. */
   float _ditherAmount;
-
-  float _aerosolPhaseConstant;
-  float _airPhaseConstant;
 
   float3   _WorldSpaceCameraPos1;
   float4x4 _ViewMatrix1;
   #undef UNITY_MATRIX_V
   #define UNITY_MATRIX_V _ViewMatrix1
 
-  /* Easier to type... */
-  #define g _aerosolAnisotropy
 
   /* Redefine colors to float3's for efficiency, since Unity can only set
    * float4's. */
@@ -148,8 +142,21 @@ Shader "HDRP/Sky/ExpanseSky"
         DirectionalLightData light = _DirectionalLightDatas[i];
         float3 L = -normalize(light.forward.xyz);
         float3 lightColor = light.color;
-        /* Ground is just a diffuse BRDF. */
-        L0 += _groundTintF3 * lightColor * (1.0 / PI) * saturate(dot(normalize(hitPoint), L));
+        float cos_hit_l = dot(normalize(hitPoint), L);
+        float mapped_cos_hit_l = (cos_hit_l + 1.0) * 0.5;
+        float2 groundIrradianceUV = float2(mapped_cos_hit_l, 0.0);
+        /* Direct lighting. */
+        L0 += _groundTintF3 * lightColor * (1.0 / PI) * saturate(cos_hit_l);
+        /* Ground irradiance lighting. */
+        float3 groundIrradianceAir =
+          SAMPLE_TEXTURE2D(_GroundIrradianceTableAir,
+          s_linear_clamp_sampler, groundIrradianceUV);
+        float3 groundIrradianceAerosol =
+          SAMPLE_TEXTURE2D(_GroundIrradianceTableAerosol,
+          s_linear_clamp_sampler, groundIrradianceUV);
+        L0 += _groundTintF3 * lightColor
+          * (_skyTintF3 * 2.0 * groundIrradianceAir
+            + groundIrradianceAerosol);
       }
     } else {
       for (int i = 0; i < _DirectionalLightCount; i++) {
@@ -221,9 +228,8 @@ Shader "HDRP/Sky/ExpanseSky"
       float3 singleScatteringContributionAerosol = lerp(ssContrib0Aerosol, ssContrib1Aerosol, ssCoord.a);
 
       float dot_L_d = dot(L, d);
-      float rayleighPhase = 3.f / (16.f * PI) * (1 + dot_L_d * dot_L_d);
-      float miePhase = 3.f / (8.0 * PI) * ((1.f - g * g) * (1.f + dot_L_d * dot_L_d))
-        / ((2.f + g * g) * pow(1.f + g * g - 2.f * g * dot_L_d, 1.5f));
+      float rayleighPhase = computeAirPhase(dot_L_d);
+      float miePhase = computeAerosolPhase(dot_L_d, g);
 
       float3 finalSingleScattering = (2.0 * _skyTintF3 * _airCoefficientsF3
         * singleScatteringContributionAir * rayleighPhase

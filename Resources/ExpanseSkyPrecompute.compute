@@ -5,6 +5,7 @@
  * tables. */
 #pragma kernel COMPUTE_TRANSMITTANCE main=COMPUTE_TRANSMITTANCE
 #pragma kernel COMPUTE_SINGLE_SCATTERING main=COMPUTE_SINGLE_SCATTERING
+#pragma kernel COMPUTE_GROUND_IRRADIANCE main=COMPUTE_GROUND_IRRADIANCE
 
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonLighting.hlsl"
@@ -25,6 +26,13 @@ RW_TEXTURE2D(float3, _TransmittanceTableRW);
  * nu (w dimension): the azimuth angle of the light source. */
 RW_TEXTURE3D(float3, _SingleScatteringTableAirRW);
 RW_TEXTURE3D(float3, _SingleScatteringTableAerosolRW);
+
+/* Ground irradiance table. Leverages spherical symmetry of the atmosphere,
+ * parameterized by:
+ * phi (x dimension): dot product between the surface normal and the
+ * light direction. */
+RW_TEXTURE2D(float3, _GroundIrradianceTableAirRW);
+RW_TEXTURE2D(float3, _GroundIrradianceTableAerosolRW);
 
 [numthreads(4,4,1)]
 void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
@@ -136,18 +144,16 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
     float sampleT = 0.0;
     float ds = 0.0;
     if (_useImportanceSampling) {
-      if (_useCubicApproximation) {
-        /* Distribute cubically. TODO: actually distribute exponentially. */
-        float2 t_ds = t * generateCubicSampleFromIndex(i, _numberOfSamples);
-        sampleT = t_ds.x;
-        ds = t_ds.y;
-      } else {
-        /* Distribute according to the exponential distribution. */
-        float2 t_ds = t * generateExponentialSampleFromIndex(i, _numberOfSamples,
-          O, hitPoint, _planetRadius, _scaleHeightAir);
-        sampleT = t_ds.x;
-        ds = t_ds.y;
-      }
+      /* Distribute samples cubically. This isn't optimal for the ozone
+       * layer, which actually samples better using a linear distribution,
+       * but around a sample count of 10 is enough to not notice the
+       * difference, since we still distribute the ozone samples linearly
+       * for the secondary sampling. We could theoretically compute a
+       * second sample point here exclusively for the ozone, but that
+       * seems inefficient. */
+      float2 t_ds = t * generateCubicSampleFromIndex(i, _numberOfSamples);
+      sampleT = t_ds.x;
+      ds = t_ds.y;
     } else {
       /* Distribute linearly. */
       float2 t_ds = t * generateLinearSampleFromIndex(i, _numberOfSamples);
@@ -211,4 +217,66 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 
   _SingleScatteringTableAirRW[id] = inScatteringAir;
   _SingleScatteringTableAerosolRW[id] = inScatteringAerosol;
+}
+
+[numthreads(4,1,1)]
+void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
+  float u_mu_l = (id.x + 0.5f) / float(GROUND_IRRADIANCE_TABLE_SIZE);
+  float u_r = 0.001; /* We are on the ground. */
+
+  /* TODO: create an unmap function for this. */
+  float H = sqrt(max(0.0, _atmosphereRadius * _atmosphereRadius - _planetRadius * _planetRadius));
+  float rho = u_r * H;
+  float r = sqrt(max(0.0, rho * rho + _planetRadius * _planetRadius));
+  float mu_l = clampCosine(2.0 * u_mu_l - 1);
+
+  float3 O = float3(0, r, 0);
+  float3 L = float3(sqrt(max(0.0, 1 - mu_l * mu_l)), mu_l, 0);
+
+  float3 aerosolContrib = float3(0.0, 0.0, 0.0);
+  float3 airContrib = float3(0.0, 0.0, 0.0);
+  int numGroundSamples = 16; /* TODO: make this adjustable. */
+  for (int i = 0; i < numGroundSamples; i++) {
+    /* Generate fibonacci hemisphere dir based on i. */
+    float3 d = fibonacciHemisphere(i, numGroundSamples);
+
+    float mu = dot(d, normalize(O));
+
+    float3 proj_L = normalize(L - normalize(O) * mu_l);
+    float3 proj_d = normalize(d - normalize(O) * dot(normalize(O), d));
+    /* Take their dot product to get the cosine of the angle between them. */
+    float nu = clampCosine(dot(proj_L, proj_d));
+
+    /* Sample the sky table. */
+    float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
+    float t_hit = max(t_atmo.x, t_atmo.y);
+    TexCoord5D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
+      _atmosphereRadius, _planetRadius, t_hit, false);
+    float3 uvw0 = float3(ssCoord.x, ssCoord.y, ssCoord.z);
+    float3 uvw1 = float3(ssCoord.x, ssCoord.y, ssCoord.w);
+
+    float3 ssContrib0Air = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAir,
+      s_trilinear_clamp_sampler, uvw0, 0).rgb;
+    float3 ssContrib1Air = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAir,
+      s_trilinear_clamp_sampler, uvw1, 0).rgb;
+    float3 ssContrib0Aerosol = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAerosol,
+      s_trilinear_clamp_sampler, uvw0, 0).rgb;
+    float3 ssContrib1Aerosol = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAerosol,
+      s_trilinear_clamp_sampler, uvw1, 0).rgb;
+
+    float3 singleScatteringContributionAir = lerp(ssContrib0Air, ssContrib1Air, ssCoord.a);
+    float3 singleScatteringContributionAerosol = lerp(ssContrib0Aerosol, ssContrib1Aerosol, ssCoord.a);
+
+    /* Compute single scattering contribution using phase functions. */
+    float dot_L_d = dot(L, d);
+    float rayleighPhase = computeAirPhase(dot_L_d);
+    float miePhase = computeAerosolPhase(dot_L_d, g);
+
+    airContrib += _airCoefficientsF3 * singleScatteringContributionAir
+    * rayleighPhase * PI / float(numGroundSamples);
+    aerosolContrib += _aerosolCoefficient * singleScatteringContributionAerosol
+      * miePhase * PI / float(numGroundSamples);
+  }
+  _GroundIrradianceTableAirRW[id.xy] = airContrib;
+  _GroundIrradianceTableAerosolRW[id.xy] = aerosolContrib;
 }

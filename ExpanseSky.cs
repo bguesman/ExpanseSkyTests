@@ -17,6 +17,7 @@ public class ExpanseSky : SkySettings
   /********************************************************************************/
 
   /* TODO: how do we group these nicely under titles in the UI? */
+  /* TODO: when we finalize these, write nice descriptions. */
 
   /* Planet Parameters. */
 
@@ -101,9 +102,6 @@ public class ExpanseSky : SkySettings
   [Tooltip("Specify whether or not to use importance sampling.")]
   public BoolParameter useImportanceSampling = new BoolParameter(true);
 
-  [Tooltip("If using importance sampling, specify if a cubic approximation should be used (checked) or the proper importance sampler (unchecked). The cubic approximation actually seems to give a better result.")]
-  public BoolParameter useCubicApproximation = new BoolParameter(true);
-
   [Tooltip("Controls amount of dithering used to reduce color banding. If this is too high, noise will be visible.")]
   public ClampedFloatParameter ditherAmount = new ClampedFloatParameter(0.01f, 0.0f, 1.0f);
 
@@ -151,7 +149,6 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + limbDarkening.value.GetHashCode();
       hash = hash * 23 + numberOfSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
-      hash = hash * 23 + useCubicApproximation.value.GetHashCode();
       hash = hash * 23 + ditherAmount.value.GetHashCode();
     }
     return hash;
@@ -166,6 +163,7 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + planetRadius.value.GetHashCode();
       hash = hash * 23 + aerosolCoefficient.value.GetHashCode();
       hash = hash * 23 + scaleHeightAerosols.value.GetHashCode();
+      hash = hash * 23 + aerosolAnisotropy.value.GetHashCode();
       hash = hash * 23 + aerosolDensity.value.GetHashCode();
       hash = hash * 23 + airCoefficients.value.GetHashCode();
       hash = hash * 23 + scaleHeightAir.value.GetHashCode();
@@ -176,7 +174,6 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + ozoneDensity.value.GetHashCode();
       hash = hash * 23 + numberOfSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
-      hash = hash * 23 + useCubicApproximation.value.GetHashCode();
     }
     return hash;
   }
