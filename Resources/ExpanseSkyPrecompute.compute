@@ -37,8 +37,11 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
     float2 r_mu = unmapTransmittanceCoordinates(u_r, u_mu, _atmosphereRadius,
       _planetRadius);
 
-    float3 O = float3(0, r_mu.x, 0);
-    float3 d = float3(sqrt(max(0.0, 1 - r_mu.y * r_mu.y)), r_mu.y, 0);
+    float r = r_mu.x;
+    float mu = r_mu.y;
+
+    float3 O = float3(0, r, 0);
+    float3 d = float3(sqrt(max(0.0, 1 - mu * mu)), mu, 0);
 
     /* See if we're looking at the ground or the sky. */
     float3 t_ground = intersectSphere(O, d, _planetRadius);
@@ -79,107 +82,132 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
 [numthreads(4,4,4)]
 void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 {
-  /* Get the uv for this id and unwrap it to a viewing angle and a
-   * height. */
-   float u_r = (id.x + 0.5f) / float(SINGLE_SCATTERING_TABLE_SIZE_H);
-   float u_mu = (id.y + 0.5f) / float(SINGLE_SCATTERING_TABLE_SIZE_PHI);
+  /* Get the uv for this id and unwrap it to a viewing angle, a
+   * height, and the sun zenith and azimuth angles. */
+  /* Height. */
+  float u_r = (id.x + 0.5f) / float(SINGLE_SCATTERING_TABLE_SIZE_H);
+  /* Viewing angle. */
+  float u_mu = (id.y + 0.5f) / float(SINGLE_SCATTERING_TABLE_SIZE_PHI);
 
-   /* TODO: abstract into utility. */
-   uint zTexSize = float(SINGLE_SCATTERING_TABLE_SIZE_PHI_L);
-   uint zTexCount = float(SINGLE_SCATTERING_TABLE_SIZE_NU);
+  float2 u_mu_l_u_nu = deepTexIndexToUV(id.z,
+    SINGLE_SCATTERING_TABLE_SIZE_PHI_L, SINGLE_SCATTERING_TABLE_SIZE_NU);
+  /* Sun zenith angle. */
+  float u_mu_l = u_mu_l_u_nu.x;
+  /* Sun azimuth angle. */
+  float u_nu = u_mu_l_u_nu.y;
 
-   uint texId = id.z / zTexSize;
-   uint texCoord = id.z & (zTexSize - 1);
-   float u_mu_l = saturate(texCoord / (float(zTexSize) - 1.0));
-   float u_nu = saturate(texId / (float(zTexCount) - 1.0));
+  float4 ssCoord = unmapSingleScatteringCoordinates(u_r, u_mu, u_mu_l, u_nu,
+    _atmosphereRadius, _planetRadius);
 
-   float4 ssCoord = unmapSingleScatteringCoordinates(u_r, u_mu, u_mu_l, u_nu,
-     _atmosphereRadius, _planetRadius);
+  float r = ssCoord.x;
+  float mu = ssCoord.y;
+  float mu_l = ssCoord.z;
+  float nu = ssCoord.w;
 
-   float3 O = float3(0, ssCoord.x, 0);
-   float3 d = normalize(float3(sqrt(max(0.0, 1 - ssCoord.y * ssCoord.y)), ssCoord.y, 0));
-   float3 L = float3(ssCoord.w*sqrt(1 - ssCoord.z*ssCoord.z), ssCoord.z,
-    sqrt(1 - ssCoord.w * ssCoord.w)*sqrt(1 - ssCoord.z*ssCoord.z));
+  float3 O = float3(0, r, 0);
+  float3 d = normalize(float3(sqrt(max(0.0, 1 - mu * mu)), mu, 0));
+  float3 L = float3(nu*sqrt(1 - mu_l*mu_l), mu_l,
+    sqrt(1 - nu * nu)*sqrt(1 - mu_l*mu_l));
 
-   /* See if we're looking at the ground or the sky. */
-   float3 t_ground = intersectSphere(O, d, _planetRadius);
-   float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
-   bool groundHit = floatGT(t_ground.z, 0.0) && (floatGT(t_ground.x, 0.0) || floatGT(t_ground.y, 0.0));
-   bool atmoHit = floatGT(t_atmo.z, 0.0) && (floatGT(t_atmo.x, 0.0) || floatGT(t_atmo.y, 0.0));
+  /* See if we're looking at the ground or the sky. */
+  float3 t_ground = intersectSphere(O, d, _planetRadius);
+  float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
+  bool groundHit = floatGT(t_ground.z, 0.0) && (floatGT(t_ground.x, 0.0) || floatGT(t_ground.y, 0.0));
+  bool atmoHit = floatGT(t_atmo.z, 0.0) && (floatGT(t_atmo.x, 0.0) || floatGT(t_atmo.y, 0.0));
 
-   /* This is not an aerial view LUT, so we'll have hit either ground or
-    * atmo. If we hit ground, we know it's closer than atmo since we're
-    * guaranteed to be inside the atmosphere. */
-   float t = 0.0;
-   if (groundHit) {
-     t = (t_ground.x < 0.0) ? t_ground.y :
-       ((t_ground.y < 0.0) ? t_ground.x : min(t_ground.x, t_ground.y));
-   } else {
-     t = (t_atmo.x < 0.0) ? t_atmo.y :
-       ((t_atmo.y < 0.0) ? t_atmo.x : min(t_atmo.x, t_atmo.y));
-   }
+  /* This is not an aerial view LUT, so we'll have hit either ground or
+   * atmo. If we hit ground, we know it's closer than atmo since we're
+   * guaranteed to be inside the atmosphere. */
+  float t = 0.0;
+  if (groundHit) {
+    t = (t_ground.x < 0.0) ? t_ground.y :
+      ((t_ground.y < 0.0) ? t_ground.x : min(t_ground.x, t_ground.y));
+  } else {
+    t = (t_atmo.x < 0.0) ? t_atmo.y :
+      ((t_atmo.y < 0.0) ? t_atmo.x : min(t_atmo.x, t_atmo.y));
+  }
 
-   float3 hitPoint = O + t * d;
+  float3 hitPoint = O + t * d;
 
-   float3 inScatteringAir = float3(0.0, 0.0, 0.0);
-   float3 inScatteringAerosol = float3(0.0, 0.0, 0.0);
-   for (int i = 0; i < _numberOfSamples; i++) {
-     /* TODO: make this non-linear. */
-     float sampleT = (((float) i) + 0.5) / ((float) _numberOfSamples);
-     float ds = t / (float) (_numberOfSamples);
-     float3 samplePoint = O + d * sampleT * t;
+  float3 inScatteringAir = float3(0.0, 0.0, 0.0);
+  float3 inScatteringAerosol = float3(0.0, 0.0, 0.0);
+  for (int i = 0; i < _numberOfSamples; i++) {
+    /* TODO: make this non-linear. */
+    float sampleT = 0.0;
+    float ds = 0.0;
+    if (_useImportanceSampling) {
+      if (_useCubicApproximation) {
+        /* Distribute cubically. TODO: actually distribute exponentially. */
+        float2 t_ds = t * generateCubicSampleFromIndex(i, _numberOfSamples);
+        sampleT = t_ds.x;
+        ds = t_ds.y;
+      } else {
+        /* Distribute according to the exponential distribution. */
+        float2 t_ds = t * generateExponentialSampleFromIndex(i, _numberOfSamples,
+          O, hitPoint, _planetRadius, _scaleHeightAir);
+        sampleT = t_ds.x;
+        ds = t_ds.y;
+      }
+    } else {
+      /* Distribute linearly. */
+      float2 t_ds = t * generateLinearSampleFromIndex(i, _numberOfSamples);
+      sampleT = t_ds.x;
+      ds = t_ds.y;
+    }
 
-     /* Trace a ray from the sample point to the light to check visibility. */
-     float3 t_light = intersectSphere(samplePoint, L, _atmosphereRadius);
-     float3 t_light_ground = intersectSphere(samplePoint, L, _planetRadius);
-     bool lightHit = floatGT(t_light.z, 0.0)
-       && (floatGT(t_light.x, 0.0) || floatGT(t_light.y, 0.0));
-     bool lightGroundHit = floatGT(t_light_ground.z, 0.0)
+    float3 samplePoint = O + d * sampleT;
+
+    /* Trace a ray from the sample point to the light to check visibility. */
+    float3 t_light = intersectSphere(samplePoint, L, _atmosphereRadius);
+    float3 t_light_ground = intersectSphere(samplePoint, L, _planetRadius);
+    bool lightHit = floatGT(t_light.z, 0.0)
+      && (floatGT(t_light.x, 0.0) || floatGT(t_light.y, 0.0));
+    bool lightGroundHit = floatGT(t_light_ground.z, 0.0)
       && (floatGT(t_light_ground.x, 0.0) || floatGT(t_light_ground.y, 0.0));
-     if (lightHit && !lightGroundHit) {
-       /* Compute the light hit point. */
-       float3 lightHitPoint = samplePoint + L * max(t_light.x, t_light.y);
+    if (lightHit && !lightGroundHit) {
+      /* Compute the light hit point. */
+      float3 lightHitPoint = samplePoint + L * max(t_light.x, t_light.y);
 
-       /* Compute the scaled densities of air and aerosol layers at the
-        * sample point. */
-       float scaledDensityAir = computeDensityExponential(samplePoint,
-         _planetRadius, _scaleHeightAir, _airDensity) * ds;
-       float scaledDensityAerosol = computeDensityExponential(samplePoint,
-         _planetRadius, _scaleHeightAerosols, _aerosolDensity) * ds;
+      /* Compute the scaled densities of air and aerosol layers at the
+       * sample point. */
+      float scaledDensityAir = computeDensityExponential(samplePoint,
+        _planetRadius, _scaleHeightAir, _airDensity) * ds;
+      float scaledDensityAerosol = computeDensityExponential(samplePoint,
+        _planetRadius, _scaleHeightAerosols, _aerosolDensity) * ds;
 
-       /* Compute transmittance from O to sample point, and then from sample
-        * point through to the light hit. */
-       float2 oToSample = mapTransmittanceCoordinates(length(O),
-         ssCoord.y, _atmosphereRadius, _planetRadius, t, groundHit);
-       float2 sampleToL = mapTransmittanceCoordinates(length(samplePoint),
+      /* Compute transmittance from O to sample point, and then from sample
+       * point through to the light hit. */
+      float2 oToSample = mapTransmittanceCoordinates(length(O),
+        mu, _atmosphereRadius, _planetRadius, t, groundHit);
+      float2 sampleToL = mapTransmittanceCoordinates(length(samplePoint),
         clampCosine(dot(normalize(samplePoint), L)), _atmosphereRadius, _planetRadius,
         max(t_light.x, t_light.y), lightGroundHit);
 
-       float3 T_oToSample = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
-         s_linear_clamp_sampler, oToSample, 0).rgb;
-       float3 T_sampleToL = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
-         s_linear_clamp_sampler, sampleToL, 0).rgb;
+      float3 T_oToSample = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+        s_linear_clamp_sampler, oToSample, 0).rgb;
+      float3 T_sampleToL = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+        s_linear_clamp_sampler, sampleToL, 0).rgb;
 
-       /* If we didn't hit the ground, then our transmittance value for
-        * O to the sample point is too large---we need to divide out
-        * the transmittance from the sample point to the atmosphere. */
-       if (!groundHit) {
-         float2 sampleOut = mapTransmittanceCoordinates(length(samplePoint),
-           clampCosine(dot(normalize(samplePoint), d)), _atmosphereRadius, _planetRadius,
-           length(hitPoint - samplePoint), false);
-         float3 T_sampleOut = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
-           s_linear_clamp_sampler, sampleOut, 0).rgb;
-         /* Clamp sample out for division. */
-         T_sampleOut = max(T_sampleOut, FLT_EPSILON);
-         T_oToSample /= T_sampleOut;
-       }
+      /* If we didn't hit the ground, then our transmittance value for
+       * O to the sample point is too large---we need to divide out
+       * the transmittance from the sample point to the atmosphere. */
+      if (!groundHit) {
+        float2 sampleOut = mapTransmittanceCoordinates(length(samplePoint),
+          clampCosine(dot(normalize(samplePoint), d)), _atmosphereRadius, _planetRadius,
+          length(hitPoint - samplePoint), false);
+        float3 T_sampleOut = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+          s_linear_clamp_sampler, sampleOut, 0).rgb;
+        /* Clamp sample out for division. */
+        T_sampleOut = max(T_sampleOut, FLT_EPSILON);
+        T_oToSample /= T_sampleOut;
+      }
 
-       float3 T = T_oToSample * T_sampleToL;
+      float3 T = T_oToSample * T_sampleToL;
 
-       inScatteringAir += scaledDensityAir * T;
-       inScatteringAerosol += scaledDensityAerosol * T;
-     }
-   }
+      inScatteringAir += scaledDensityAir * T;
+      inScatteringAerosol += scaledDensityAerosol * T;
+    }
+  }
 
   _SingleScatteringTableAirRW[id] = inScatteringAir;
   _SingleScatteringTableAerosolRW[id] = inScatteringAerosol;

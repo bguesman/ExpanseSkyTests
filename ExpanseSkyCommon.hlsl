@@ -183,6 +183,40 @@ struct TexCoord5D {
   float x, y, z, w, a;
 };
 
+/* Converts u, v in unit range to a deep texture coordinate (w0, w1, a) with
+ * zTexSize rows and zTexCount columns.
+ *
+ * Returns (w0, w1, a), where w0 and w1 are the locations to sample the
+ * texture at and a is the blend amount to use when interpolating between
+ * them. Mathematically:
+ *
+ *         sample(u, v) = a * sample(w0) + (1 - a) * sample(w1)
+ *
+ */
+float3 uvToDeepTexCoord(float u, float v, int zTexSize, int zTexCount) {
+  float w = (0.5 + u * (zTexSize - 1)) * (1.0/zTexSize);
+  float k = v * (zTexCount - 1);
+  float w0 = (floor(k) + w) * (1.0/zTexCount);
+  float w1 = (ceil(k) + w) * (1.0/zTexCount);
+  float a = frac(k);
+  return float3(w0, w1, a);
+}
+
+/* Converts deep texture index in range zTexSize * zTexCount to the
+ * uv coordinate in unit range that represents the 2D table index for a
+ * table with zTexSize rows and zTexCount columns.
+ *
+ * Returns (u, v).
+ */
+float2 deepTexIndexToUV(int deepTexCoord, int zTexSize, int zTexCount) {
+  uint texId = deepTexCoord / zTexSize;
+  uint texCoord = deepTexCoord & (zTexSize - 1);
+  float u = saturate(texCoord / (float(zTexSize) - 1.0));
+  float v = saturate(texId / (float(zTexCount) - 1.0));
+  return float2(u, v);
+}
+
+
 /* Returns u_r, u_mu, u_mu_l/u_nu bundled into z. */
 TexCoord5D mapSingleScatteringCoordinates(float r, float mu, float mu_l, float nu,
   float atmosphereRadius, float planetRadius, float d, bool groundHit) {
@@ -201,17 +235,11 @@ TexCoord5D mapSingleScatteringCoordinates(float r, float mu, float mu_l, float n
   // u_mu = (1.0 + mu) * 0.5;
   // u_mu_l = (1.0 + mu_l) * 0.5;
 
-  /* TODO: abstract this kind of thing out into a separate function that maps a
-   * 4d coord to a 3d + manual lerp one. */
-  float zTexSize = SINGLE_SCATTERING_TABLE_SIZE_PHI_L;
-  float zTexCount = SINGLE_SCATTERING_TABLE_SIZE_NU;
-  float w = (0.5 + u_mu_l * (zTexSize - 1)) * (1.0/zTexSize);
-  float k = u_nu * (zTexCount - 1);
-  float w0 = (floor(k) + w) * (1.0/zTexCount);
-  float w1 = (ceil(k) + w) * (1.0/zTexCount);
-  float a = frac(k);
+  float3 deepTexCoord = uvToDeepTexCoord(u_mu_l, u_nu,
+    SINGLE_SCATTERING_TABLE_SIZE_PHI_L, SINGLE_SCATTERING_TABLE_SIZE_NU);
 
-  TexCoord5D toRet = {u_r_mu.x, u_r_mu.y, w0, w1, a};
+  TexCoord5D toRet = {u_r_mu.x, u_r_mu.y, deepTexCoord.x,
+    deepTexCoord.y, deepTexCoord.z};
   return toRet;
 }
 
@@ -251,18 +279,130 @@ float computeDensityTent(float3 p, float planetR, float height,
     1.0 - abs(length(p) - planetR - height) / (0.5 * thickness));
 }
 
+/* Generates linear location from a sample index.
+ * Returns (sample, ds). */
+float2 generateLinearSampleFromIndex(int i, int numberOfSamples) {
+  return float2((float(i) + 0.5) / float(numberOfSamples),
+    1.0 / ((float) numberOfSamples));
+}
+
+/* Generates cubed "importance sample" location from a sample index.
+ * Returns (sample, ds). TODO: this is a hack. Should really use an
+ * actual importance sampler. */
+float2 generateCubicSampleFromIndex(int i, int numberOfSamples) {
+  float t_left = float(i) / float(_numberOfSamples);
+  float t_middle = (float(i) + 0.5) / float(numberOfSamples);
+  float t_right = (float(i) + 1.0) / float(numberOfSamples);
+  t_left *= t_left * t_left;
+  t_middle *= t_middle * t_middle;
+  t_right *= t_right * t_right;
+  return float2(t_middle, t_right - t_left);
+}
+
+/* Generates importance sample location for an exponential distribution from a
+ * sample index and the distribution parameters.
+ *
+ * h_min and h_max are the minimum and maximum heights of the sample range.
+ *
+ * Returns (sample, ds). */
+float2 generateExponentialSampleFromIndex(int i, int numberOfSamples, float3
+  startPoint, float3 endPoint, float planetR, float scaleHeight) {
+  float3 p = startPoint;
+  float3 d = endPoint - startPoint;
+  float R = planetR;
+  float H = scaleHeight;
+  float pp = dot(p, p);
+  float pd = dot(p, d);
+  float dd = dot(d, d);
+
+  float u_min = exp(-(length(startPoint) - R)/H);
+  float u_max = exp(-(length(endPoint) - R)/H);
+  float u_diff = u_max - u_min;
+
+  float u_left = u_min
+    + (float(i) / float(numberOfSamples)) * u_diff;
+  float u_middle = u_min
+    + ((float(i) + 0.5) / float(numberOfSamples)) * u_diff;
+  float u_right = u_min
+    + ((float(i) + 1.0) / float(numberOfSamples)) * u_diff;
+
+  float A = dd;
+  float B = 2 * pd;
+  float3 C = float3(pp - ((R - H * log(u_left)) * (R - H * log(u_left))),
+                    pp - ((R - H * log(u_middle)) * (R - H * log(u_middle))),
+                    pp - ((R - H * log(u_right)) * (R - H * log(u_right))));
+
+  float3 discriminant = B * B - 4 * A * C;
+  /* Pretty sure this can never happen. */
+  if (discriminant.x < 0.0 || discriminant.y < 0.0
+    || discriminant.z < 0.0) {
+    return generateLinearSampleFromIndex(i, numberOfSamples);
+  }
+
+  float t_local_minimum = -pd / dd;
+  float u_local_minimum = exp(-(length(p + t_local_minimum * d) - R)/H);
+
+  float3 t_hi = (-B + sqrt(discriminant)) / (2.0 * A);
+  float3 t_lo = (-B - sqrt(discriminant)) / (2.0 * A);
+
+  float3 t = float3(0, 0, 0);
+
+  if (floatLT(t_local_minimum, 0.0)) {
+    t = t_hi;
+  } else if (floatGT(t_local_minimum, 1.0)) {
+    t = t_lo;
+  } else {
+    // return generateCubicSampleFromIndex(i, numberOfSamples);
+    if (u_left > u_local_minimum) {
+      t = t_lo.x;
+    } else {
+      t = t_hi.x;
+    }
+    if (u_middle > u_local_minimum) {
+      t.y = t_lo.y;
+    } else {
+      t.y = t_hi.y;
+    }
+    if (u_right > u_local_minimum) {
+      t.z = t_lo.z;
+    } else {
+      t.z = t_hi.z;
+    }
+  }
+
+  return saturate(float2(t.y, t.z - t.x));
+}
+
 /* TODO: set up importance sampling for these optical depth functions? */
 /* Computes the optical depth for an exponentially distributed layer. */
 float computeOpticalDepthExponential(float3 originPoint, float3 samplePoint,
   float planetR, float scaleHeight, float density) {
   // Evaluate integral over curved planet with a midpoint integrator.
   float3 d = samplePoint - originPoint;
+  float length_d = length(d);
   float acc = 0.0;
-  float ds = length(d) / ((float) _numberOfSamples);
+  float h_min = length(originPoint) - planetR;
+  float h_max = length(samplePoint) - planetR;
   for (int i = 0; i < _numberOfSamples; i++) {
-    float t = (((float) i + 0.5)) / ((float) _numberOfSamples);
-    float3 pt = originPoint + (d * t);
-    acc += computeDensityExponential(pt, planetR, scaleHeight, density) * ds;
+    /* Compute where along the ray we're going to sample. */
+    float2 t_ds = float2(0, 0);
+    if (_useImportanceSampling) {
+      if (_useCubicApproximation) {
+        t_ds = generateCubicSampleFromIndex(i, _numberOfSamples);
+      } else {
+        t_ds = generateExponentialSampleFromIndex(i, _numberOfSamples,
+          originPoint, samplePoint, planetR, scaleHeight);
+      }
+    } else {
+      t_ds = generateLinearSampleFromIndex(i, _numberOfSamples);
+    }
+
+    /* Compute the point we're going to sample at. */
+    float3 pt = originPoint + (d * t_ds.x);
+
+    /* Accumulate the density at that point. */
+    acc += computeDensityExponential(pt, planetR, scaleHeight, density)
+      * t_ds.y * length_d;
   }
   return acc;
 }
@@ -274,12 +414,23 @@ float computeOpticalDepthTent(float3 originPoint, float3 samplePoint,
   float planetR, float height, float thickness, float density) {
   // Evaluate integral over curved planet with a midpoint integrator.
   float3 d = samplePoint - originPoint;
+  float length_d = length(d);
   float acc = 0.0;
-  float ds = length(d) / ((float) _numberOfSamples);
   for (int i = 0; i < _numberOfSamples; i++) {
-    float t = (((float) i + 0.5)) / ((float) _numberOfSamples);
-    float3 pt = originPoint + (d * t);
-    acc += computeDensityTent(pt, planetR, height, thickness, density) * ds;
+    /* Compute where along the ray we're going to sample. */
+    float2 t_ds = float2(0, 0);
+    if (_useImportanceSampling) {
+      t_ds = generateCubicSampleFromIndex(i, _numberOfSamples);
+    } else {
+      t_ds = generateLinearSampleFromIndex(i, _numberOfSamples);
+    }
+
+    /* Compute the point we're going to sample at. */
+    float3 pt = originPoint + (d * t_ds.x);
+
+    /* Accumulate the density at that point. */
+    acc += computeDensityTent(pt, planetR, height, thickness, density)
+      * t_ds.y * length_d;
   }
   return acc;
 }

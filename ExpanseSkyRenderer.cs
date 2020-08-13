@@ -247,7 +247,8 @@ class ExpanseSkyRenderer : SkyRenderer
     public override void RenderSky(BuiltinSkyParameters builtinParams, bool renderForCubemap, bool renderSunDisk)
     {
         /* TODO: no idea why this using thing is here. It must be a debug
-         * type thing. */
+         * type thing. Unity says it's obselete, but finding a way to
+         * profile would actually be very cool. */
         using (new ProfilingSample(builtinParams.commandBuffer, "Draw Expanse Sky"))
         {
             var expanseSky = builtinParams.skySettings as ExpanseSky;

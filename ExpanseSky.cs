@@ -96,7 +96,7 @@ public class ExpanseSky : SkySettings
 
   /* Sampling. */
   [Tooltip("Specify the number of samples to use when raymarching.")]
-  public ClampedIntParameter numberOfSamples = new ClampedIntParameter(5, 1, 30);
+  public ClampedIntParameter numberOfSamples = new ClampedIntParameter(5, 1, 100);
 
   [Tooltip("Specify whether or not to use importance sampling.")]
   public BoolParameter useImportanceSampling = new BoolParameter(true);
