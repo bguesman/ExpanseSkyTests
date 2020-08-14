@@ -11,6 +11,7 @@ CBUFFER_START(ExpanseSky)
 float _atmosphereThickness;
 float _planetRadius;
 float _atmosphereRadius;
+float4 _groundTint;
 float _aerosolCoefficient;
 float _scaleHeightAerosols;
 float _aerosolAnisotropy;
@@ -34,6 +35,7 @@ bool _useImportanceSampling;
  * float4's. */
 #define _airCoefficientsF3 _airCoefficients.xyz
 #define _ozoneCoefficientsF3 _ozoneCoefficients.xyz
+#define _groundTintF3 _groundTint.xyz
 
 /* Set up a sampler for the cubemaps. */
 SAMPLER(sampler_Cubemap);
@@ -60,6 +62,8 @@ TEXTURE2D(_TransmittanceTable);
  * nu (w dimension): the azimuth angle of the light source. */
 TEXTURE3D(_SingleScatteringTableAir);
 TEXTURE3D(_SingleScatteringTableAerosol);
+TEXTURE3D(_SingleScatteringTableAirNoShadows);
+TEXTURE3D(_SingleScatteringTableAerosolNoShadows);
 /* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
  * be great to be able to set these as constants. I don't want to make them
  * accessible because I haven't set up any way to reallocate these on the
@@ -67,7 +71,7 @@ TEXTURE3D(_SingleScatteringTableAerosol);
 #define SINGLE_SCATTERING_TABLE_SIZE_H 32
 #define SINGLE_SCATTERING_TABLE_SIZE_PHI 128
 #define SINGLE_SCATTERING_TABLE_SIZE_PHI_L 32
-#define SINGLE_SCATTERING_TABLE_SIZE_NU 64
+#define SINGLE_SCATTERING_TABLE_SIZE_NU 32
 
 /* Ground irradiance tables. Leverages spherical symmetry of the atmosphere,
  * parameterized by:
@@ -80,6 +84,38 @@ TEXTURE2D(_GroundIrradianceTableAerosol);
  * accessible because I haven't set up any way to reallocate these on the
  * fly. */
 #define GROUND_IRRADIANCE_TABLE_SIZE 256
+
+/* Local multiple scattering table. Leverages spherical symmetry of the atmosphere,
+ * parameterized by:
+ * h (x dimension): the height of the camera.
+ * phi_l (y dimension): dot product between the surface normal and the
+ * light direction. */
+TEXTURE2D(_LocalMultipleScatteringTable);
+/* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
+ * be great to be able to set these as constants. I don't want to make them
+ * accessible because I haven't set up any way to reallocate these on the
+ * fly. */
+#define MULTIPLE_SCATTERING_TABLE_SIZE_H 32
+#define MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L 32
+
+/* Global multiple scattering tables. Leverage spherical symmetry of the
+ * atmosphere, parameterized by:
+ * h (x dimension): the height of the camera.
+ * phi (y dimension): the zenith angle of the viewing direction.
+ * phi_l (z dimension): the zenith angle of the light source.
+ * nu (w dimension): the azimuth angle of the light source. */
+TEXTURE3D(_GlobalMultipleScatteringTableAir);
+TEXTURE3D(_GlobalMultipleScatteringTableAerosol);
+/* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
+ * be great to be able to set these as constants. I don't want to make them
+ * accessible because I haven't set up any way to reallocate these on the
+ * fly. */
+#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_H 32
+#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI 128
+#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L 32
+#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_NU 32
+
+
 
 CBUFFER_END
 
@@ -110,6 +146,12 @@ float clampCosine(float c) {
   return clamp(c, -1.0, 1.0);
 }
 
+/* Returns minimum non-negative number, given that one number is
+ * non-negative. If both numbers are negative, returns a negative number. */
+float minNonNegative(float a, float b) {
+  return (a < 0.0) ? b : ((b < 0.0) ? a : min(a, b));
+}
+
 /* True if a is greater than b within tolerance FLT_EPSILON, false
  * otherwise. */
 bool floatGT(float a, float b) {
@@ -134,6 +176,18 @@ float3 fibonacciHemisphere(int i, int n) {
   return float3(cos_theta * sin_phi, cos_phi, sin_theta * sin_phi);
 }
 
+/* Given an index and total number of points, generates corresponding
+ * point on fibonacci sphere. */
+float3 fibonacciSphere(int i, int n) {
+  float i_mid = i + 0.5;
+  float cos_phi = 1 - 2 * i/float(n);
+  float sin_phi = sqrt(1 - cos_phi * cos_phi);
+  float theta = 2 * PI * i / GOLDEN_RATIO;
+  float cos_theta = cos(theta);
+  float sin_theta = sqrt(1 - cos_theta * cos_theta);
+  return float3(cos_theta * sin_phi, cos_phi, sin_theta * sin_phi);
+}
+
 /* Returns t values of ray intersection with sphere. Third value indicates
  * if there was an intersection at all; if negative, there was no
  * intersection. */
@@ -147,6 +201,65 @@ float3 intersectSphere(float3 p, float3 d, float r) {
     return float3((-B + det) / (2.f * A), (-B - det) / (2.f * A), 1.0);
   }
   return float3(0, 0, -1.0);
+}
+
+/* Struct containing data for ray intersection queries. */
+struct IntersectionData {
+  float startT, endT;
+  bool groundHit, atmoHit;
+};
+
+/* Traces a ray starting at point O in direction d. Returns information
+ * about where the ray hit on the ground/on the boundary of the atmosphere. */
+IntersectionData traceRay(float3 O, float3 d, float planetRadius,
+  float atmosphereRadius) {
+  /* Perform raw sphere intersections. */
+  float3 t_ground = intersectSphere(O, d, planetRadius);
+  float3 t_atmo = intersectSphere(O, d, atmosphereRadius);
+
+  IntersectionData toRet;
+
+  /* We have a hit if the intersection was succesful and if either point
+   * is greater than zero (meaning we are in front of the ray, and not
+   * behind it). */
+  toRet.groundHit = t_ground.z >= 0.0 && (t_ground.x >= 0.0 || t_ground.y >= 0.0);
+  toRet.atmoHit = t_atmo.z >= 0.0 && (t_atmo.x >= 0.0 || t_atmo.y >= 0.0);
+
+  if (length(O) < atmosphereRadius) {
+    /* We are below the atmosphere boundary, and we will start our raymarch
+     * at the origin point. */
+    toRet.startT = 0;
+    if (toRet.groundHit) {
+      /* We have hit the ground, and will end our raymarch at the first
+       * positive ground hit. */
+      toRet.endT = minNonNegative(t_ground.x, t_ground.y);
+    } else {
+      /* We will end our raymarch at the first positive atmosphere hit. */
+      toRet.endT = minNonNegative(t_atmo.x, t_atmo.y);
+    }
+  } else {
+    /* We are outside the atmosphere, and, if we intersect the atmosphere
+     * at all, we will start our raymarch at the first atmosphere
+     * intersection point. We don't need to be concerned about negative
+     * t values, since it's a geometric impossibility to be outside a sphere
+     * and intersect both in front of and behind a ray. */
+    if (toRet.atmoHit) {
+      toRet.startT = min(t_atmo.x, t_atmo.y);
+      if (toRet.groundHit) {
+        /* If we hit the ground at all, we'll end our ray at the first ground
+         * intersection point. */
+        toRet.endT = min(t_ground.x, t_ground.y);
+      } else {
+        /* Otherwise, we'll end our ray at the second atmosphere
+         * intersection point. */
+        toRet.endT = max(t_atmo.x, t_atmo.y);
+      }
+    }
+    /* If we haven't hit the atmosphere, we leave everything uninitialized,
+     * since this ray just goes out into space. */
+  }
+
+  return toRet;
 }
 
 /* This parameterization was taken from Bruneton and Neyer's model. */
@@ -206,11 +319,41 @@ float2 unmapTransmittanceCoordinates(float u_r, float u_mu,
   return float2(r, mu);
 }
 
+/* This parameterization was taken from Hillaire's 2020 model. */
+/* Returns u_r, u_mu_l. */
+float2 mapMultipleScatteringCoordinates(float r, float mu_l, float atmosphereRadius,
+  float planetRadius) {
+  float rho = sqrt(max(0.0, r * r - planetRadius * planetRadius));
+  float H = sqrt(max(0.0, atmosphereRadius * atmosphereRadius
+    - planetRadius * planetRadius));
+  float u_r = rho / H;
+  float u_mu_l = saturate((1.0 - exp(-3 * mu_l - 0.6)) / (1 - exp(-3.6)));
+  return float2(u_r, u_mu_l);
+}
+
+/* Returns r, mu_l. */
+float2 unmapMultipleScatteringCoordinates(float u_r, float u_mu_l, float atmosphereRadius,
+  float planetRadius) {
+  float H = sqrt(max(0.0, atmosphereRadius * atmosphereRadius - planetRadius * planetRadius));
+  float rho = u_r * H;
+  float r = sqrt(max(0.0, rho * rho + planetRadius * planetRadius));
+  float mu_l = clampCosine((log(1.0 - (u_mu_l * (1 - exp(-3.6)))) + 0.6) / -3.0);
+  return float2(r, mu_l);
+}
+
 /* Follow the strategy in physically based sky and lerp between 2 4D
  * texture lookups to solve the issue of uv-mapping for a deep texture. */
 struct TexCoord5D {
   float x, y, z, w, a;
 };
+
+float3 sampleTexture4D(Texture3D tex, TexCoord5D coord) {
+  float3 uvw0 = float3(coord.x, coord.y, coord.z);
+  float3 uvw1 = float3(coord.x, coord.y, coord.w);
+  float3 contrib0 = SAMPLE_TEXTURE3D_LOD(tex, s_trilinear_clamp_sampler, uvw0, 0).rgb;
+  float3 contrib1 = SAMPLE_TEXTURE3D_LOD(tex, s_trilinear_clamp_sampler, uvw1, 0).rgb;
+  return lerp(contrib0, contrib1, coord.a);
+}
 
 /* Converts u, v in unit range to a deep texture coordinate (w0, w1, a) with
  * zTexSize rows and zTexCount columns.

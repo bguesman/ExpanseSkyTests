@@ -92,8 +92,12 @@ public class ExpanseSky : SkySettings
   [Tooltip("Makes the scattering of starlight due to aerosols artificially stronger or weaker.")]
   public ClampedFloatParameter starAerosolScatterMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 5.0f);
 
+  [Tooltip("Multiplier on multiple scattering")]
+  public ClampedFloatParameter multipleScatteringMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
+
   [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is physically accurate. Higher values will darken more, lower values will darken less. A value of 0.0 will turn off the effect entirely.")]
   public ClampedFloatParameter limbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
+
 
   /* Sampling. */
   [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
@@ -152,6 +156,7 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + ozoneDensity.value.GetHashCode();
       hash = hash * 23 + skyTint.value.GetHashCode();
       hash = hash * 23 + starAerosolScatterMultiplier.value.GetHashCode();
+      hash = hash * 23 + multipleScatteringMultiplier.value.GetHashCode();
       hash = hash * 23 + limbDarkening.value.GetHashCode();
       hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
       hash = hash * 23 + numberOfScatteringSamples.value.GetHashCode();
@@ -169,6 +174,7 @@ public class ExpanseSky : SkySettings
     {
       hash = hash * 23 + atmosphereThickness.value.GetHashCode();
       hash = hash * 23 + planetRadius.value.GetHashCode();
+      hash = hash * 23 + groundTint.value.GetHashCode();
       hash = hash * 23 + aerosolCoefficient.value.GetHashCode();
       hash = hash * 23 + scaleHeightAerosols.value.GetHashCode();
       hash = hash * 23 + aerosolAnisotropy.value.GetHashCode();

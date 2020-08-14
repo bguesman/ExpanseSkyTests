@@ -33,6 +33,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _ozoneDensityID = Shader.PropertyToID("_ozoneDensity");
     public static readonly int _skyTintID = Shader.PropertyToID("_skyTint");
     public static readonly int _starAerosolScatterMultiplierID = Shader.PropertyToID("_starAerosolScatterMultiplier");
+    public static readonly int _multipleScatteringMultiplierID = Shader.PropertyToID("_multipleScatteringMultiplier");
     public static readonly int _limbDarkeningID = Shader.PropertyToID("_limbDarkening");
     public static readonly int _numberOfTransmittanceSamplesID = Shader.PropertyToID("_numberOfTransmittanceSamples");
     public static readonly int _numberOfScatteringSamplesID = Shader.PropertyToID("_numberOfScatteringSamples");
@@ -50,7 +51,11 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _groundIrradianceTableAerosolID = Shader.PropertyToID("_GroundIrradianceTableAerosol");
     public static readonly int _singleScatteringTableAirID = Shader.PropertyToID("_SingleScatteringTableAir");
     public static readonly int _singleScatteringTableAerosolID = Shader.PropertyToID("_SingleScatteringTableAerosol");
-
+    public static readonly int _singleScatteringTableAirNoShadowsID = Shader.PropertyToID("_SingleScatteringTableAirNoShadows");
+    public static readonly int _singleScatteringTableAerosolNoShadowsID = Shader.PropertyToID("_SingleScatteringTableAerosolNoShadows");
+    public static readonly int _localMultipleScatteringTableID = Shader.PropertyToID("_LocalMultipleScatteringTable");
+    public static readonly int _globalMultipleScatteringTableAirID = Shader.PropertyToID("_GlobalMultipleScatteringTableAir");
+    public static readonly int _globalMultipleScatteringTableAerosolID = Shader.PropertyToID("_GlobalMultipleScatteringTableAerosol");
     /********************************************************************************/
     /************************** End Shader Variable ID's ****************************/
     /********************************************************************************/
@@ -62,9 +67,17 @@ class ExpanseSkyRenderer : SkyRenderer
     const int SingleScatteringTableSizeH = 32;
     const int SingleScatteringTableSizePhi = 128;
     const int SingleScatteringTableSizePhiL = 32;
-    const int SingleScatteringTableSizeNu = 64;
+    const int SingleScatteringTableSizeNu = 32;
 
     const int GroundIrradianceTableSize = 256;
+
+    const int LocalMultipleScatteringTableSizeH = 32;
+    const int LocalMultipleScatteringTableSizePhiL = 32;
+
+    const int GlobalMultipleScatteringTableSizeH = 32;
+    const int GlobalMultipleScatteringTableSizePhi = 128;
+    const int GlobalMultipleScatteringTableSizePhiL = 32;
+    const int GlobalMultipleScatteringTableSizeNu = 32;
 
     /* Transmittance table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
@@ -85,6 +98,20 @@ class ExpanseSkyRenderer : SkyRenderer
      * phi (x dimension): dot product between the surface normal and the
      * light direction. */
     RTHandle[]                   m_GroundIrradianceTables;
+
+    /* Multiple scattering table. Leverages spherical symmetry of the atmosphere,
+     * parameterized by:
+     * h (x dimension): the height of the camera.
+     * phi_l (y dimension): dot product between the surface normal and the
+     * light direction. */
+    RTHandle[]                   m_LocalMultipleScatteringTables;
+
+    /* Multiple scattering table. Leverages spherical symmetry of the atmosphere,
+     * parameterized by:
+     * h (x dimension): the height of the camera.
+     * phi_l (y dimension): dot product between the surface normal and the
+     * light direction. */
+    RTHandle[]                   m_GlobalMultipleScatteringTables;
 
     static ComputeShader         s_PrecomputeCS;
 
@@ -139,6 +166,36 @@ class ExpanseSkyRenderer : SkyRenderer
         return table;
     }
 
+    RTHandle AllocateLocalMultipleScatteringTable(int index)
+    {
+        var table = RTHandles.Alloc(LocalMultipleScatteringTableSizeH,
+                                    LocalMultipleScatteringTableSizePhiL,
+                                    dimension: TextureDimension.Tex2D,
+                                    colorFormat: s_ColorFormat,
+                                    enableRandomWrite: true,
+                                    name: string.Format("LocalMultipleScatteringTable{0}", index));
+
+        Debug.Assert(table != null);
+
+        return table;
+    }
+
+    RTHandle AllocateGlobalMultipleScatteringTable(int index)
+    {
+        var table = RTHandles.Alloc(GlobalMultipleScatteringTableSizeH,
+                                    GlobalMultipleScatteringTableSizePhi,
+                                    GlobalMultipleScatteringTableSizePhiL *
+                                    GlobalMultipleScatteringTableSizeNu,
+                                    dimension: TextureDimension.Tex3D,
+                                    colorFormat: s_ColorFormat,
+                                    enableRandomWrite: true,
+                                    name: string.Format("GlobalMultipleScatteringTable{0}", index));
+
+        Debug.Assert(table != null);
+
+        return table;
+    }
+
     // Renders a cubemap into a render texture (can be cube or 2D)
     Material m_ExpanseSkyMaterial;
     MaterialPropertyBlock m_PropertyBlock = new MaterialPropertyBlock();
@@ -162,9 +219,19 @@ class ExpanseSkyRenderer : SkyRenderer
       m_GroundIrradianceTables[0] = AllocateGroundIrradianceTable(0);
       m_GroundIrradianceTables[1] = AllocateGroundIrradianceTable(1);
 
-      m_SingleScatteringTables = new RTHandle[2];
+      m_SingleScatteringTables = new RTHandle[4];
       m_SingleScatteringTables[0] = AllocateSingleScatteringTable(0);
       m_SingleScatteringTables[1] = AllocateSingleScatteringTable(1);
+      m_SingleScatteringTables[2] = AllocateSingleScatteringTable(2);
+      m_SingleScatteringTables[3] = AllocateSingleScatteringTable(3);
+
+      m_LocalMultipleScatteringTables = new RTHandle[2];
+      m_LocalMultipleScatteringTables[0] = AllocateLocalMultipleScatteringTable(0);
+      m_LocalMultipleScatteringTables[1] = AllocateLocalMultipleScatteringTable(1);
+
+      m_GlobalMultipleScatteringTables = new RTHandle[2];
+      m_GlobalMultipleScatteringTables[0] = AllocateGlobalMultipleScatteringTable(0);
+      m_GlobalMultipleScatteringTables[1] = AllocateGlobalMultipleScatteringTable(1);
     }
 
     // Project dependent way to retrieve a shader.
@@ -190,11 +257,25 @@ class ExpanseSkyRenderer : SkyRenderer
         m_SingleScatteringTables[0] = null;
         RTHandles.Release(m_SingleScatteringTables[1]);
         m_SingleScatteringTables[1] = null;
+        RTHandles.Release(m_SingleScatteringTables[2]);
+        m_SingleScatteringTables[2] = null;
+        RTHandles.Release(m_SingleScatteringTables[3]);
+        m_SingleScatteringTables[3] = null;
 
         RTHandles.Release(m_GroundIrradianceTables[0]);
         m_GroundIrradianceTables[0] = null;
         RTHandles.Release(m_GroundIrradianceTables[1]);
         m_GroundIrradianceTables[1] = null;
+
+        RTHandles.Release(m_LocalMultipleScatteringTables[0]);
+        m_LocalMultipleScatteringTables[0] = null;
+        RTHandles.Release(m_LocalMultipleScatteringTables[1]);
+        m_LocalMultipleScatteringTables[1] = null;
+
+        RTHandles.Release(m_GlobalMultipleScatteringTables[0]);
+        m_GlobalMultipleScatteringTables[0] = null;
+        RTHandles.Release(m_GlobalMultipleScatteringTables[1]);
+        m_GlobalMultipleScatteringTables[1] = null;
     }
 
     void SetGlobalConstants(CommandBuffer cmd, BuiltinSkyParameters builtinParams) {
@@ -204,8 +285,9 @@ class ExpanseSkyRenderer : SkyRenderer
         /* Set the parameters that need to be used for sky table
          * precomputation, aka, everything in ExpanseSkyCommon.hlsl. */
         cmd.SetGlobalFloat(_atmosphereThicknessID, expanseSky.atmosphereThickness.value);
-        cmd.SetGlobalFloat(_atmosphereRadiusID, expanseSky.atmosphereThickness.value + expanseSky.planetRadius.value);
         cmd.SetGlobalFloat(_planetRadiusID, expanseSky.planetRadius.value);
+        cmd.SetGlobalFloat(_atmosphereRadiusID, expanseSky.atmosphereThickness.value + expanseSky.planetRadius.value);
+        cmd.SetGlobalVector(_groundTintID, expanseSky.groundTint.value);
         cmd.SetGlobalFloat(_aerosolCoefficientID, expanseSky.aerosolCoefficient.value);
         cmd.SetGlobalFloat(_scaleHeightAerosolsID, expanseSky.scaleHeightAerosols.value);
         cmd.SetGlobalFloat(_aerosolAnisotropyID, expanseSky.aerosolAnisotropy.value);
@@ -228,6 +310,11 @@ class ExpanseSkyRenderer : SkyRenderer
         cmd.SetGlobalTexture(_groundIrradianceTableAerosolID, m_GroundIrradianceTables[1]);
         cmd.SetGlobalTexture(_singleScatteringTableAirID, m_SingleScatteringTables[0]);
         cmd.SetGlobalTexture(_singleScatteringTableAerosolID, m_SingleScatteringTables[1]);
+        cmd.SetGlobalTexture(_singleScatteringTableAirNoShadowsID, m_SingleScatteringTables[2]);
+        cmd.SetGlobalTexture(_singleScatteringTableAerosolNoShadowsID, m_SingleScatteringTables[3]);
+        cmd.SetGlobalTexture(_localMultipleScatteringTableID, m_LocalMultipleScatteringTables[0]);
+        cmd.SetGlobalTexture(_globalMultipleScatteringTableAirID, m_GlobalMultipleScatteringTables[0]);
+        cmd.SetGlobalTexture(_globalMultipleScatteringTableAerosolID, m_GlobalMultipleScatteringTables[1]);
     }
 
     void SetPrecomputeTextures() {
@@ -252,6 +339,24 @@ class ExpanseSkyRenderer : SkyRenderer
         m_SingleScatteringTables[0]);
       s_PrecomputeCS.SetTexture(singleScatteringKernelHandle, "_SingleScatteringTableAerosolRW",
         m_SingleScatteringTables[1]);
+      s_PrecomputeCS.SetTexture(singleScatteringKernelHandle, "_SingleScatteringTableAirNoShadowsRW",
+        m_SingleScatteringTables[2]);
+      s_PrecomputeCS.SetTexture(singleScatteringKernelHandle, "_SingleScatteringTableAerosolNoShadowsRW",
+        m_SingleScatteringTables[3]);
+
+      int localMultipleScatteringKernelHandle =
+        s_PrecomputeCS.FindKernel("COMPUTE_LOCAL_MULTIPLE_SCATTERING");
+      /* Set the textures for the compute shader. */
+      s_PrecomputeCS.SetTexture(localMultipleScatteringKernelHandle, "_LocalMultipleScatteringTableRW",
+        m_LocalMultipleScatteringTables[0]);
+
+      int globalMultipleScatteringKernelHandle =
+        s_PrecomputeCS.FindKernel("COMPUTE_GLOBAL_MULTIPLE_SCATTERING");
+      /* Set the textures for the compute shader. */
+      s_PrecomputeCS.SetTexture(globalMultipleScatteringKernelHandle, "_GlobalMultipleScatteringTableAirRW",
+        m_GlobalMultipleScatteringTables[0]);
+      s_PrecomputeCS.SetTexture(globalMultipleScatteringKernelHandle, "_GlobalMultipleScatteringTableAerosolRW",
+        m_GlobalMultipleScatteringTables[1]);
     }
 
     void PrecomputeTables(CommandBuffer cmd)
@@ -268,6 +373,19 @@ class ExpanseSkyRenderer : SkyRenderer
         cmd.DispatchCompute(s_PrecomputeCS, singleScatteringKernelHandle,
           SingleScatteringTableSizeH / 4, SingleScatteringTableSizePhi / 4,
           (SingleScatteringTableSizePhiL * SingleScatteringTableSizeNu) / 4);
+
+        int localMultipleScatteringKernelHandle =
+          s_PrecomputeCS.FindKernel("COMPUTE_LOCAL_MULTIPLE_SCATTERING");
+        cmd.DispatchCompute(s_PrecomputeCS, localMultipleScatteringKernelHandle,
+          LocalMultipleScatteringTableSizeH / 4,
+          LocalMultipleScatteringTableSizeH / 4, 1);
+
+        int globalMultipleScatteringKernelHandle =
+          s_PrecomputeCS.FindKernel("COMPUTE_GLOBAL_MULTIPLE_SCATTERING");
+        cmd.DispatchCompute(s_PrecomputeCS, globalMultipleScatteringKernelHandle,
+          GlobalMultipleScatteringTableSizeH / 4,
+          GlobalMultipleScatteringTableSizePhi / 4,
+          (GlobalMultipleScatteringTableSizePhiL * GlobalMultipleScatteringTableSizeNu) / 4);
 
         int groundIrradianceKernelHandle =
           s_PrecomputeCS.FindKernel("COMPUTE_GROUND_IRRADIANCE");
@@ -308,7 +426,6 @@ class ExpanseSkyRenderer : SkyRenderer
 
             /* Set the shader uniform variables. */
             m_PropertyBlock.SetTexture(_groundColorTextureID, expanseSky.groundColorTexture.value);
-            m_PropertyBlock.SetVector(_groundTintID, expanseSky.groundTint.value);
             m_PropertyBlock.SetTexture(_groundEmissiveTextureID, expanseSky.groundEmissiveTexture.value);
             m_PropertyBlock.SetFloat(_groundEmissiveMultiplierID, expanseSky.groundEmissiveMultiplier.value);
             m_PropertyBlock.SetTexture(_nightSkyHDRIID, expanseSky.nightSkyHDRI.value);
@@ -316,6 +433,7 @@ class ExpanseSkyRenderer : SkyRenderer
             m_PropertyBlock.SetFloat(_nightIntensityID, expanseSky.nightIntensity.value);
             m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
             m_PropertyBlock.SetFloat(_starAerosolScatterMultiplierID, expanseSky.starAerosolScatterMultiplier.value);
+            m_PropertyBlock.SetFloat(_multipleScatteringMultiplierID, expanseSky.multipleScatteringMultiplier.value);
             m_PropertyBlock.SetFloat(_limbDarkeningID, expanseSky.limbDarkening.value);
             m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value);
 

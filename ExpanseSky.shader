@@ -23,7 +23,6 @@ Shader "HDRP/Sky/ExpanseSky"
 /********************************************************************************/
 
   TEXTURECUBE(_groundColorTexture);
-  float4 _groundTint;
   TEXTURECUBE(_groundEmissiveTexture);
   float _groundEmissiveMultiplier;
   TEXTURECUBE(_nightSkyHDRI);
@@ -31,6 +30,7 @@ Shader "HDRP/Sky/ExpanseSky"
   float _nightIntensity;
   float4 _skyTint;
   float _starAerosolScatterMultiplier;
+  float _multipleScatteringMultiplier;
   float _limbDarkening;  /* TODO: make this per celestial body. */
   float _ditherAmount;
 
@@ -42,7 +42,6 @@ Shader "HDRP/Sky/ExpanseSky"
 
   /* Redefine colors to float3's for efficiency, since Unity can only set
    * float4's. */
-  #define _groundTintF3 _groundTint.xyz
   #define _nightTintF3 _nightTint.xyz
   #define _skyTintF3 _skyTint.xyz
 
@@ -106,43 +105,23 @@ Shader "HDRP/Sky/ExpanseSky"
     float3 O = _WorldSpaceCameraPos1 - float3(0, -_planetRadius, 0);
     float3 d = normalize(-GetSkyViewDirWS(i.positionCS.xy) + jitter);
 
-    /* See if we're looking at the ground or the sky. */
-    float3 t_ground = intersectSphere(O, d, _planetRadius);
-    float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
-    bool groundHit = t_ground.z >= 0.0 && (t_ground.x >= 0.0 || t_ground.y >= 0.0);
-    bool atmoHit = t_atmo.z >= 0.0 && (t_atmo.x >= 0.0 || t_atmo.y >= 0.0);
+    /* Trace a ray to see what we hit. */
+    IntersectionData intersection = traceRay(O, d, _planetRadius,
+      _atmosphereRadius);
 
-    /* TODO: may want to get rid of this branch if possible. */
-    if (!groundHit && !atmoHit) {
-      /* We've hit space. Return black. */
-      return float4(0.0, 0.0, 0.0, 1.0);
-    }
-
-    /* Figure out the point we're raymarching to. */
-    float t_hit = 0.0;
-    if (groundHit) {
-      /* We've hit the ground. The point we want to raymarch to is the
-       * closest positive ground hit. */
-      t_hit = (t_ground.x < 0.0) ? t_ground.y :
-      ((t_ground.y < 0.0) ? t_ground.x : min(t_ground.x, t_ground.y));
-    } else {
-      /* We've hit only the atmosphere. The point we want to raymarch to is
-       * the furthest positive atmo hit, since we want to march through the
-       * whole volume. */
-      t_hit = max(t_atmo.x, t_atmo.y);
-    }
-
-    float3 hitPoint = O + d * t_hit;
+    float3 startPoint = O + d * intersection.startT;
+    float3 endPoint = O + d * intersection.endT;
+    float t_hit = intersection.endT - intersection.startT;
 
     /* Loop through lights and accumulate direct illumination. */
     float3 L0 = float3(0, 0, 0);
     /* Put the loop inside the conditional so we only have to evaluate once. */
-    if (groundHit) {
+    if (intersection.groundHit) {
       for (int i = 0; i < min(4, _DirectionalLightCount); i++) {
         DirectionalLightData light = _DirectionalLightDatas[i];
         float3 L = -normalize(light.forward.xyz);
         float3 lightColor = light.color;
-        float cos_hit_l = dot(normalize(hitPoint), L);
+        float cos_hit_l = dot(normalize(endPoint), L);
         float mapped_cos_hit_l = (cos_hit_l + 1.0) * 0.5;
         float2 groundIrradianceUV = float2(mapped_cos_hit_l, 0.0);
         /* Direct lighting. */
@@ -170,18 +149,18 @@ Shader "HDRP/Sky/ExpanseSky"
         float3 luminance = computeCelestialBodyLuminance(lightColor, cosInner);
         if (LdotV >= cosInner) {
           L0 += luminance * limbDarkening(LdotV, cosInner, _limbDarkening)
-            * light.surfaceTint;
+            * light.surfaceTint.rgb;
         }
       }
     }
 
     /* Compute r and mu for the lookup tables. */
-    float r = length(O);
-    float mu = clampCosine(dot(normalize(O), d));
+    float r = length(startPoint);
+    float mu = clampCosine(dot(normalize(startPoint), d));
 
     /* Perform the transmittance table lookup attenuating direct lighting. */
     float2 transmittanceUV = mapTransmittanceCoordinates(r,
-      mu, _atmosphereRadius, _planetRadius, t_hit, groundHit);
+      mu, _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
     float3 T = SAMPLE_TEXTURE2D(_TransmittanceTable, s_linear_clamp_sampler,
       transmittanceUV);
 
@@ -189,53 +168,54 @@ Shader "HDRP/Sky/ExpanseSky"
      * HACK: clamping directional light count because of weird bug
      * where it's >100 for a sec. */
     float3 skyColor = float3(0, 0, 0);
-    int lightCount = _DirectionalLightCount;
-    for (int k = 0; k < min(4, _DirectionalLightCount); k++) {
-      DirectionalLightData light = _DirectionalLightDatas[k];
-      float3 L = -normalize(light.forward.xyz);
-      float3 lightColor = light.color;
+    if (intersection.groundHit || intersection.atmoHit) {
+      int lightCount = _DirectionalLightCount;
+      for (int i = 0; i < min(4, _DirectionalLightCount); i++) {
+        DirectionalLightData light = _DirectionalLightDatas[i];
+        float3 L = -normalize(light.forward.xyz);
+        float3 lightColor = light.color;
 
-      /* Mu is the zenith angle of the light. */
-      float mu_l = clampCosine(dot(normalize(O), L));
+        /* Mu is the zenith angle of the light. */
+        float mu_l = clampCosine(dot(normalize(startPoint), L));
 
-      /* Nu is the azimuth angle of the light, relative to the projection of
-       * d onto the plane tangent to the surface of the planet at point O. */
-      /* Project both L and d onto that plane by removing their "O"
-       * component. */
-      float3 proj_L = normalize(L - normalize(O) * mu_l);
-      float3 proj_d = normalize(d - normalize(O) * dot(normalize(O), d));
-      /* Take their dot product to get the cosine of the angle between them. */
-      float nu  = clampCosine(dot(proj_L, proj_d));
+        /* Nu is the azimuth angle of the light, relative to the projection of
+         * d onto the plane tangent to the surface of the planet at point O. */
+        /* Project both L and d onto that plane by removing their "O"
+         * component. */
+        float3 proj_L = normalize(L - normalize(startPoint) * mu_l);
+        float3 proj_d = normalize(d - normalize(startPoint) * dot(normalize(startPoint), d));
+        /* Take their dot product to get the cosine of the angle between them. */
+        float nu = clampCosine(dot(proj_L, proj_d));
 
-      TexCoord5D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
-        _atmosphereRadius, _planetRadius, t_hit, groundHit);
+        TexCoord5D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
+          _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
 
-      float3 uvw0 = float3(ssCoord.x, ssCoord.y, ssCoord.z);
-      float3 uvw1 = float3(ssCoord.x, ssCoord.y, ssCoord.w);
+        float3 singleScatteringContributionAir =
+          sampleTexture4D(_SingleScatteringTableAir, ssCoord);
 
-      float3 ssContrib0Air = SAMPLE_TEXTURE3D(_SingleScatteringTableAir,
-        s_trilinear_clamp_sampler, uvw0).rgb;
-      float3 ssContrib1Air = SAMPLE_TEXTURE3D(_SingleScatteringTableAir,
-        s_trilinear_clamp_sampler, uvw1).rgb;
+        float3 singleScatteringContributionAerosol =
+          sampleTexture4D(_SingleScatteringTableAerosol, ssCoord);
 
-      float3 singleScatteringContributionAir = lerp(ssContrib0Air, ssContrib1Air, ssCoord.a);
+        float dot_L_d = dot(L, d);
+        float rayleighPhase = computeAirPhase(dot_L_d);
+        float miePhase = computeAerosolPhase(dot_L_d, g);
 
-      float3 ssContrib0Aerosol = SAMPLE_TEXTURE3D(_SingleScatteringTableAerosol,
-        s_trilinear_clamp_sampler, uvw0).rgb;
-      float3 ssContrib1Aerosol = SAMPLE_TEXTURE3D(_SingleScatteringTableAerosol,
-        s_trilinear_clamp_sampler, uvw1).rgb;
+        float3 finalSingleScattering = (2.0 * _skyTintF3 * _airCoefficientsF3
+          * singleScatteringContributionAir * rayleighPhase
+          + _aerosolCoefficient * singleScatteringContributionAerosol * miePhase);
 
-      float3 singleScatteringContributionAerosol = lerp(ssContrib0Aerosol, ssContrib1Aerosol, ssCoord.a);
+        /* Sample multiple scattering. */
+        float msAir = sampleTexture4D(_GlobalMultipleScatteringTableAir, ssCoord);
 
-      float dot_L_d = dot(L, d);
-      float rayleighPhase = computeAirPhase(dot_L_d);
-      float miePhase = computeAerosolPhase(dot_L_d, g);
+        float3 msAerosol = sampleTexture4D(_GlobalMultipleScatteringTableAerosol, ssCoord);
 
-      float3 finalSingleScattering = (2.0 * _skyTintF3 * _airCoefficientsF3
-        * singleScatteringContributionAir * rayleighPhase
-        + _aerosolCoefficient * singleScatteringContributionAerosol * miePhase);
+        float3 finalMultipleScattering = (2.0 * _skyTintF3
+          * _airCoefficientsF3 * msAir
+          + _aerosolCoefficient * msAerosol)
+          * _multipleScatteringMultiplier;
 
-      skyColor += finalSingleScattering * lightColor;
+        skyColor += (finalSingleScattering + finalMultipleScattering) * lightColor;
+      }
     }
 
     float3 finalDirectLighting = (L0 * T);
@@ -243,7 +223,7 @@ Shader "HDRP/Sky/ExpanseSky"
     float dither = 1.0 + _ditherAmount * (0.5 - random(d.xy));
     return dither * exposure * (finalDirectLighting
       + skyColor
-      + (groundHit ? 0.0 : _nightTint * _nightIntensity));
+      + (intersection.groundHit ? 0.0 : _nightTint * _nightIntensity));
   }
 
   float4 FragBaking(Varyings input) : SV_Target
