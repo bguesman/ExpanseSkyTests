@@ -73,11 +73,12 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
 
     /* Compute optical depth for all 3 atmosphere layers. */
     float opticalDepthAir = computeOpticalDepthExponential(O, hitPoint, _planetRadius,
-      _scaleHeightAir, _airDensity);
+      _scaleHeightAir, _airDensity, _numberOfTransmittanceSamples);
     float opticalDepthOzone = computeOpticalDepthTent(O, hitPoint, _planetRadius,
-      _ozoneHeight, _ozoneThickness, _ozoneDensity);
+      _ozoneHeight, _ozoneThickness, _ozoneDensity, _numberOfTransmittanceSamples);
     float opticalDepthAerosol = computeOpticalDepthExponential(O, hitPoint,
-      _planetRadius, _scaleHeightAerosols, _aerosolDensity);
+      _planetRadius, _scaleHeightAerosols, _aerosolDensity,
+      _numberOfTransmittanceSamples);
 
     /* Compute transmittance from optical depth. */
     float3 T = exp(-_airCoefficientsF3 * opticalDepthAir
@@ -139,7 +140,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 
   float3 inScatteringAir = float3(0.0, 0.0, 0.0);
   float3 inScatteringAerosol = float3(0.0, 0.0, 0.0);
-  for (int i = 0; i < _numberOfSamples; i++) {
+  for (int i = 0; i < _numberOfScatteringSamples; i++) {
     /* TODO: make this non-linear. */
     float sampleT = 0.0;
     float ds = 0.0;
@@ -151,12 +152,12 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
        * for the secondary sampling. We could theoretically compute a
        * second sample point here exclusively for the ozone, but that
        * seems inefficient. */
-      float2 t_ds = t * generateCubicSampleFromIndex(i, _numberOfSamples);
+      float2 t_ds = t * generateCubicSampleFromIndex(i, _numberOfScatteringSamples);
       sampleT = t_ds.x;
       ds = t_ds.y;
     } else {
       /* Distribute linearly. */
-      float2 t_ds = t * generateLinearSampleFromIndex(i, _numberOfSamples);
+      float2 t_ds = t * generateLinearSampleFromIndex(i, _numberOfScatteringSamples);
       sampleT = t_ds.x;
       ds = t_ds.y;
     }
@@ -235,10 +236,9 @@ void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
 
   float3 aerosolContrib = float3(0.0, 0.0, 0.0);
   float3 airContrib = float3(0.0, 0.0, 0.0);
-  int numGroundSamples = 16; /* TODO: make this adjustable. */
-  for (int i = 0; i < numGroundSamples; i++) {
+  for (int i = 0; i < _numberOfGroundIrradianceSamples; i++) {
     /* Generate fibonacci hemisphere dir based on i. */
-    float3 d = fibonacciHemisphere(i, numGroundSamples);
+    float3 d = fibonacciHemisphere(i, _numberOfGroundIrradianceSamples);
 
     float mu = dot(d, normalize(O));
 
@@ -273,9 +273,9 @@ void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
     float miePhase = computeAerosolPhase(dot_L_d, g);
 
     airContrib += _airCoefficientsF3 * singleScatteringContributionAir
-    * rayleighPhase * PI / float(numGroundSamples);
+    * rayleighPhase * PI / float(_numberOfGroundIrradianceSamples);
     aerosolContrib += _aerosolCoefficient * singleScatteringContributionAerosol
-      * miePhase * PI / float(numGroundSamples);
+      * miePhase * PI / float(_numberOfGroundIrradianceSamples);
   }
   _GroundIrradianceTableAirRW[id.xy] = airContrib;
   _GroundIrradianceTableAerosolRW[id.xy] = aerosolContrib;

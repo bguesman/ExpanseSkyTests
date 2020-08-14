@@ -96,8 +96,14 @@ public class ExpanseSky : SkySettings
   public ClampedFloatParameter limbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
 
   /* Sampling. */
-  [Tooltip("Specify the number of samples to use when raymarching.")]
-  public ClampedIntParameter numberOfSamples = new ClampedIntParameter(5, 1, 100);
+  [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
+  public ClampedIntParameter numberOfTransmittanceSamples = new ClampedIntParameter(10, 1, 128);
+
+  [Tooltip("Specify the number of samples to use when sampling along the secondary ray.")]
+  public ClampedIntParameter numberOfScatteringSamples = new ClampedIntParameter(10, 1, 128);
+
+  [Tooltip("Specify the number of samples to use when sampling the ground irradiance.")]
+  public ClampedIntParameter numberOfGroundIrradianceSamples = new ClampedIntParameter(10, 1, 128);
 
   [Tooltip("Specify whether or not to use importance sampling.")]
   public BoolParameter useImportanceSampling = new BoolParameter(true);
@@ -147,7 +153,9 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + skyTint.value.GetHashCode();
       hash = hash * 23 + starAerosolScatterMultiplier.value.GetHashCode();
       hash = hash * 23 + limbDarkening.value.GetHashCode();
-      hash = hash * 23 + numberOfSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfScatteringSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfGroundIrradianceSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
       hash = hash * 23 + ditherAmount.value.GetHashCode();
     }
@@ -172,7 +180,9 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + ozoneThickness.value.GetHashCode();
       hash = hash * 23 + ozoneHeight.value.GetHashCode();
       hash = hash * 23 + ozoneDensity.value.GetHashCode();
-      hash = hash * 23 + numberOfSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfScatteringSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfGroundIrradianceSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
     }
     return hash;

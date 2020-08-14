@@ -22,7 +22,9 @@ float4 _ozoneCoefficients;
 float _ozoneThickness;
 float _ozoneHeight;
 float _ozoneDensity;
-int _numberOfSamples;
+int _numberOfTransmittanceSamples;
+int _numberOfScatteringSamples;
+int _numberOfGroundIrradianceSamples;
 bool _useImportanceSampling;
 
 /* Easier to type... */
@@ -67,7 +69,7 @@ TEXTURE3D(_SingleScatteringTableAerosol);
 #define SINGLE_SCATTERING_TABLE_SIZE_PHI_L 32
 #define SINGLE_SCATTERING_TABLE_SIZE_NU 64
 
-/* Ground irradiance tables. Leverage spherical symmetry of the atmosphere,
+/* Ground irradiance tables. Leverages spherical symmetry of the atmosphere,
  * parameterized by:
  * phi (x dimension): dot product between the surface normal and the
  * light direction. */
@@ -316,7 +318,7 @@ float2 generateLinearSampleFromIndex(int i, int numberOfSamples) {
 /* Generates cubed "importance sample" location from a sample index.
  * Returns (sample, ds). */
 float2 generateCubicSampleFromIndex(int i, int numberOfSamples) {
-  float t_left = float(i) / float(_numberOfSamples);
+  float t_left = float(i) / float(numberOfSamples);
   float t_middle = (float(i) + 0.5) / float(numberOfSamples);
   float t_right = (float(i) + 1.0) / float(numberOfSamples);
   t_left *= t_left * t_left;
@@ -327,18 +329,18 @@ float2 generateCubicSampleFromIndex(int i, int numberOfSamples) {
 
 /* Computes the optical depth for an exponentially distributed layer. */
 float computeOpticalDepthExponential(float3 originPoint, float3 samplePoint,
-  float planetR, float scaleHeight, float density) {
+  float planetR, float scaleHeight, float density, int numberOfSamples) {
   // Evaluate integral over curved planet with a midpoint integrator.
   float3 d = samplePoint - originPoint;
   float length_d = length(d);
   float acc = 0.0;
-  for (int i = 0; i < _numberOfSamples; i++) {
+  for (int i = 0; i < numberOfSamples; i++) {
     /* Compute where along the ray we're going to sample. */
     float2 t_ds = float2(0, 0);
     if (_useImportanceSampling) {
-      t_ds = generateCubicSampleFromIndex(i, _numberOfSamples);
+      t_ds = generateCubicSampleFromIndex(i, numberOfSamples);
     } else {
-      t_ds = generateLinearSampleFromIndex(i, _numberOfSamples);
+      t_ds = generateLinearSampleFromIndex(i, numberOfSamples);
     }
 
     /* Compute the point we're going to sample at. */
@@ -354,16 +356,17 @@ float computeOpticalDepthExponential(float3 originPoint, float3 samplePoint,
 /* Computes the optical depth for a layer distributed as a tent
  * function at specified height with specified thickness. */
 float computeOpticalDepthTent(float3 originPoint, float3 samplePoint,
-  float planetR, float height, float thickness, float density) {
+  float planetR, float height, float thickness, float density,
+  int numberOfSamples) {
   // Evaluate integral over curved planet with a midpoint integrator.
   float3 d = samplePoint - originPoint;
   float length_d = length(d);
   float acc = 0.0;
-  for (int i = 0; i < _numberOfSamples; i++) {
+  for (int i = 0; i < numberOfSamples; i++) {
     /* Compute where along the ray we're going to sample. For the ozone
      * layer, it's much better to use the linearly distributed samples,
      * as opposed to the cubically distributed ones. */
-    float2 t_ds = generateLinearSampleFromIndex(i, _numberOfSamples);
+    float2 t_ds = generateLinearSampleFromIndex(i, numberOfSamples);
 
     /* Compute the point we're going to sample at. */
     float3 pt = originPoint + (d * t_ds.x);

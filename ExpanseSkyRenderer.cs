@@ -34,7 +34,9 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _skyTintID = Shader.PropertyToID("_skyTint");
     public static readonly int _starAerosolScatterMultiplierID = Shader.PropertyToID("_starAerosolScatterMultiplier");
     public static readonly int _limbDarkeningID = Shader.PropertyToID("_limbDarkening");
-    public static readonly int _numberOfSamplesID = Shader.PropertyToID("_numberOfSamples");
+    public static readonly int _numberOfTransmittanceSamplesID = Shader.PropertyToID("_numberOfTransmittanceSamples");
+    public static readonly int _numberOfScatteringSamplesID = Shader.PropertyToID("_numberOfScatteringSamples");
+    public static readonly int _numberOfGroundIrradianceSamplesID = Shader.PropertyToID("_numberOfGroundIrradianceSamples");
     public static readonly int _useImportanceSamplingID = Shader.PropertyToID("_useImportanceSampling");
     public static readonly int _ditherAmountID = Shader.PropertyToID("_ditherAmount");
 
@@ -215,7 +217,9 @@ class ExpanseSkyRenderer : SkyRenderer
         cmd.SetGlobalFloat(_ozoneThicknessID, expanseSky.ozoneThickness.value);
         cmd.SetGlobalFloat(_ozoneHeightID, expanseSky.ozoneHeight.value);
         cmd.SetGlobalFloat(_ozoneDensityID, expanseSky.ozoneDensity.value);
-        cmd.SetGlobalInt(_numberOfSamplesID, expanseSky.numberOfSamples.value);
+        cmd.SetGlobalInt(_numberOfTransmittanceSamplesID, expanseSky.numberOfTransmittanceSamples.value);
+        cmd.SetGlobalInt(_numberOfScatteringSamplesID, expanseSky.numberOfScatteringSamples.value);
+        cmd.SetGlobalInt(_numberOfGroundIrradianceSamplesID, expanseSky.numberOfGroundIrradianceSamples.value);
         cmd.SetGlobalFloat(_useImportanceSamplingID, expanseSky.useImportanceSampling.value ? 1f : 0f);
 
         /* Set the texture for the actual sky shader. */
