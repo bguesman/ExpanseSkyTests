@@ -69,13 +69,13 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
     float mu = r_mu.y;
 
     float3 O = float3(0, r, 0);
-    float3 d = float3(sqrt(max(0.0, 1 - mu * mu)), mu, 0);
+    float3 d = float3(safeSqrt(1 - mu * mu), mu, 0);
 
     /* Trace a ray to see what we hit. */
     IntersectionData intersection = traceRay(O, d, _planetRadius,
       _atmosphereRadius);
     float3 startPoint = O + d * intersection.startT;
-    float3 endPoint = O + d * intersection.endT;
+    float3 endPoint = startPoint + d * intersection.endT;
 
     /* Compute optical depth for all 3 atmosphere layers. */
     float opticalDepthAir = computeOpticalDepthExponential(startPoint, endPoint, _planetRadius,
@@ -120,9 +120,9 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
   float nu = ssCoord.w;
 
   float3 O = float3(0, r, 0);
-  float3 d = normalize(float3(sqrt(max(0.0, 1 - mu * mu)), mu, 0));
-  float3 L = float3(nu*sqrt(1 - mu_l*mu_l), mu_l,
-    sqrt(1 - nu * nu)*sqrt(1 - mu_l*mu_l));
+  float3 d = normalize(float3(safeSqrt(1 - mu * mu), mu, 0));
+  float3 L = float3(nu*safeSqrt(1 - mu_l*mu_l), mu_l,
+    safeSqrt(1 - nu * nu)*safeSqrt(1 - mu_l*mu_l));
 
   /* Trace a ray to see what we hit. */
   IntersectionData intersection = traceRay(O, d, _planetRadius,
@@ -137,7 +137,6 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
   float3 inScatteringAirNoShadows = float3(0.0, 0.0, 0.0);
   float3 inScatteringAerosolNoShadows = float3(0.0, 0.0, 0.0);
   for (int i = 0; i < _numberOfScatteringSamples; i++) {
-    /* TODO: make this non-linear. */
     float sampleT = 0.0;
     float ds = 0.0;
     if (_useImportanceSampling) {
@@ -227,16 +226,13 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 [numthreads(4,1,1)]
 void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
   float u_mu_l = (id.x + 0.5f) / float(GROUND_IRRADIANCE_TABLE_SIZE);
-  float u_r = 0.001; /* We are on the ground. */
 
-  /* TODO: create an unmap function for this. */
-  float H = sqrt(max(0.0, _atmosphereRadius * _atmosphereRadius - _planetRadius * _planetRadius));
-  float rho = u_r * H;
-  float r = sqrt(max(0.0, rho * rho + _planetRadius * _planetRadius));
-  float mu_l = clampCosine(2.0 * u_mu_l - 1);
+  float2 r_mu_l = unmapGroundIrradianceCoordinates(u_mu_l);
+  float r = r_mu_l.x;
+  float mu_l = r_mu_l.y;
 
   float3 O = float3(0, r, 0);
-  float3 L = float3(sqrt(max(0.0, 1 - mu_l * mu_l)), mu_l, 0);
+  float3 L = float3(safeSqrt(1 - mu_l * mu_l), mu_l, 0);
 
   float3 aerosolContrib = float3(0.0, 0.0, 0.0);
   float3 airContrib = float3(0.0, 0.0, 0.0);
@@ -252,34 +248,28 @@ void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
     float nu = clampCosine(dot(proj_L, proj_d));
 
     /* Sample the sky table. */
-    float3 t_atmo = intersectSphere(O, d, _atmosphereRadius);
-    float t_hit = max(t_atmo.x, t_atmo.y);
-    TexCoord5D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
-      _atmosphereRadius, _planetRadius, t_hit, false);
-    float3 uvw0 = float3(ssCoord.x, ssCoord.y, ssCoord.z);
-    float3 uvw1 = float3(ssCoord.x, ssCoord.y, ssCoord.w);
+    IntersectionData intersection = traceRay(O, d, _planetRadius,
+      _atmosphereRadius);
+    if (!intersection.groundHit) {
+      float t_hit = intersection.endT;
+      TexCoord4D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
+        _atmosphereRadius, _planetRadius, t_hit, false);
 
-    float3 ssContrib0Air = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAir,
-      s_trilinear_clamp_sampler, uvw0, 0).rgb;
-    float3 ssContrib1Air = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAir,
-      s_trilinear_clamp_sampler, uvw1, 0).rgb;
-    float3 ssContrib0Aerosol = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAerosol,
-      s_trilinear_clamp_sampler, uvw0, 0).rgb;
-    float3 ssContrib1Aerosol = SAMPLE_TEXTURE3D_LOD(_SingleScatteringTableAerosol,
-      s_trilinear_clamp_sampler, uvw1, 0).rgb;
+      float3 singleScatteringContributionAir =
+        sampleTexture4D(_SingleScatteringTableAir, ssCoord);
+      float3 singleScatteringContributionAerosol =
+        sampleTexture4D(_SingleScatteringTableAerosol, ssCoord);
 
-    float3 singleScatteringContributionAir = lerp(ssContrib0Air, ssContrib1Air, ssCoord.a);
-    float3 singleScatteringContributionAerosol = lerp(ssContrib0Aerosol, ssContrib1Aerosol, ssCoord.a);
+      /* Compute single scattering contribution using phase functions. */
+      float dot_L_d = dot(L, d);
+      float rayleighPhase = computeAirPhase(dot_L_d);
+      float miePhase = computeAerosolPhase(dot_L_d, g);
 
-    /* Compute single scattering contribution using phase functions. */
-    float dot_L_d = dot(L, d);
-    float rayleighPhase = computeAirPhase(dot_L_d);
-    float miePhase = computeAerosolPhase(dot_L_d, g);
-
-    airContrib += _airCoefficientsF3 * singleScatteringContributionAir
-    * rayleighPhase * PI / float(_numberOfGroundIrradianceSamples);
-    aerosolContrib += _aerosolCoefficient * singleScatteringContributionAerosol
-      * miePhase * PI / float(_numberOfGroundIrradianceSamples);
+      airContrib += _airCoefficientsF3 * singleScatteringContributionAir
+      * rayleighPhase * PI / float(_numberOfGroundIrradianceSamples);
+      aerosolContrib += _aerosolCoefficient * singleScatteringContributionAerosol
+        * miePhase * PI / float(_numberOfGroundIrradianceSamples);
+    }
   }
   _GroundIrradianceTableAirRW[id.xy] = airContrib;
   _GroundIrradianceTableAerosolRW[id.xy] = aerosolContrib;
@@ -291,14 +281,14 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
   float u_r = (id.x + 0.5f) / float(MULTIPLE_SCATTERING_TABLE_SIZE_H);
   float u_mu_l = (id.y + 0.5f) / float(MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L);
 
-  float2 r_mu_l = unmapMultipleScatteringCoordinates(u_r, u_mu_l, _atmosphereRadius,
-    _planetRadius);
+  float2 r_mu_l = unmapLocalMultipleScatteringCoordinates(u_r, u_mu_l,
+    _atmosphereRadius, _planetRadius);
 
   float r = r_mu_l.x;
   float mu_l = r_mu_l.y;
 
   float3 O = float3(0, r, 0);
-  float3 L = float3(sqrt(max(0.0, 1 - mu_l * mu_l)), mu_l, 0);
+  float3 L = float3(safeSqrt(1 - mu_l * mu_l), mu_l, 0);
 
   /* Sample a bunch of directions, uniformly distributed on a sphere. */
   int numberOfMultipleScatteringSamples = 64;
@@ -306,7 +296,7 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
   float3 transferFunction = float3(0, 0, 0);
   for (int i = 0; i < numberOfMultipleScatteringSamples; i++) {
     /* Get the sample direction. */
-    float3 d = fibonacciHemisphere(i, numberOfMultipleScatteringSamples);
+    float3 d = fibonacciSphere(i, numberOfMultipleScatteringSamples);
 
     /* Trace a ray to see what we hit. */
     IntersectionData intersection = traceRay(O, d, _planetRadius,
@@ -340,7 +330,7 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
     }
 
     /* Sample the single scattering tables. */
-    TexCoord5D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
+    TexCoord4D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
       _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
 
     float3 singleScatteringContributionAir =
@@ -382,14 +372,15 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
   float u_mu = (id.y + 0.5f) / float(GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI);
 
   float2 u_mu_l_u_nu = deepTexIndexToUV(id.z,
-    GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L, GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_NU);
+    GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L,
+    GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_NU);
   /* Sun zenith angle. */
   float u_mu_l = u_mu_l_u_nu.x;
   /* Sun azimuth angle. */
   float u_nu = u_mu_l_u_nu.y;
 
-  float4 ssCoord = unmapSingleScatteringCoordinates(u_r, u_mu, u_mu_l, u_nu,
-    _atmosphereRadius, _planetRadius);
+  float4 ssCoord = unmapGlobalMultipleScatteringCoordinates(u_r, u_mu, u_mu_l,
+    u_nu, _atmosphereRadius, _planetRadius);
 
   float r = ssCoord.x;
   float mu = ssCoord.y;
@@ -397,9 +388,9 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
   float nu = ssCoord.w;
 
   float3 O = float3(0, r, 0);
-  float3 d = normalize(float3(sqrt(max(0.0, 1 - mu * mu)), mu, 0));
-  float3 L = float3(nu*sqrt(1 - mu_l*mu_l), mu_l,
-    sqrt(1 - nu * nu)*sqrt(1 - mu_l*mu_l));
+  float3 d = normalize(float3(safeSqrt(1 - mu * mu), mu, 0));
+  float3 L = float3(nu*safeSqrt(1 - mu_l*mu_l), mu_l,
+    safeSqrt(1 - nu * nu)*safeSqrt(1 - mu_l*mu_l));
 
   IntersectionData intersection = traceRay(O, d, _planetRadius,
     _atmosphereRadius);
@@ -410,7 +401,6 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
   float3 multipleScatteringAir = float3(0.0, 0.0, 0.0);
   float3 multipleScatteringAerosol = float3(0.0, 0.0, 0.0);
   for (int i = 0; i < _numberOfScatteringSamples; i++) {
-    /* TODO: make this non-linear. */
     float sampleT = 0.0;
     float ds = 0.0;
     if (_useImportanceSampling) {
@@ -436,7 +426,7 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
     float r_sample = length(samplePoint);
     float mu_l_sample = dot(normalize(samplePoint), L);
     /* TODO: change this to mapLocalMultipleScatteringCoordinates. */
-    float2 msUV = mapMultipleScatteringCoordinates(r_sample, mu_l_sample,
+    float2 msUV = mapLocalMultipleScatteringCoordinates(r_sample, mu_l_sample,
       _atmosphereRadius, _planetRadius);
     float3 msContrib = SAMPLE_TEXTURE2D_LOD(_LocalMultipleScatteringTable,
       s_linear_clamp_sampler, msUV, 0).rgb;

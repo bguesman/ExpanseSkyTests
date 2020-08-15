@@ -85,7 +85,7 @@ Shader "HDRP/Sky/ExpanseSky"
   float limbDarkening(float LdotV, float cosInner, float amount) {
     /* amount = max(FLT_EPS, amount); */
     float centerToEdge = 1.0 - abs((LdotV - cosInner) / (1.0 - cosInner));
-    float mu = sqrt(1.0 - centerToEdge * centerToEdge);
+    float mu = safeSqrt(1.0 - centerToEdge * centerToEdge);
     float mu2 = mu * mu;
     float mu3 = mu2 * mu;
     float mu4 = mu2 * mu2;
@@ -122,8 +122,7 @@ Shader "HDRP/Sky/ExpanseSky"
         float3 L = -normalize(light.forward.xyz);
         float3 lightColor = light.color;
         float cos_hit_l = dot(normalize(endPoint), L);
-        float mapped_cos_hit_l = (cos_hit_l + 1.0) * 0.5;
-        float2 groundIrradianceUV = float2(mapped_cos_hit_l, 0.0);
+        float2 groundIrradianceUV = mapGroundIrradianceCoordinates(cos_hit_l);
         /* Direct lighting. */
         L0 += _groundTintF3 * lightColor * (1.0 / PI) * saturate(cos_hit_l);
         /* Ground irradiance lighting. */
@@ -187,7 +186,7 @@ Shader "HDRP/Sky/ExpanseSky"
         /* Take their dot product to get the cosine of the angle between them. */
         float nu = clampCosine(dot(proj_L, proj_d));
 
-        TexCoord5D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
+        TexCoord4D ssCoord = mapSingleScatteringCoordinates(r, mu, mu_l, nu,
           _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
 
         float3 singleScatteringContributionAir =
@@ -205,16 +204,23 @@ Shader "HDRP/Sky/ExpanseSky"
           + _aerosolCoefficient * singleScatteringContributionAerosol * miePhase);
 
         /* Sample multiple scattering. */
-        float msAir = sampleTexture4D(_GlobalMultipleScatteringTableAir, ssCoord);
+        TexCoord4D msCoord = mapGlobalMultipleScatteringCoordinates(r, mu,
+          mu_l, nu, _atmosphereRadius, _planetRadius, t_hit,
+          intersection.groundHit);
 
-        float3 msAerosol = sampleTexture4D(_GlobalMultipleScatteringTableAerosol, ssCoord);
+        float3 msAir =
+          sampleTexture4D(_GlobalMultipleScatteringTableAir, msCoord);
+
+        float3 msAerosol =
+          sampleTexture4D(_GlobalMultipleScatteringTableAerosol, msCoord);
 
         float3 finalMultipleScattering = (2.0 * _skyTintF3
           * _airCoefficientsF3 * msAir
           + _aerosolCoefficient * msAerosol)
           * _multipleScatteringMultiplier;
 
-        skyColor += (finalSingleScattering + finalMultipleScattering) * lightColor;
+        skyColor +=
+          (finalSingleScattering + finalMultipleScattering) * lightColor;
       }
     }
 
@@ -251,8 +257,7 @@ Shader "HDRP/Sky/ExpanseSky"
 
   SubShader
   {
-    // Regular New Sky
-    // For cubemap
+    /* For cubemap. */
     Pass
     {
       ZWrite Off
@@ -265,7 +270,7 @@ Shader "HDRP/Sky/ExpanseSky"
       ENDHLSL
     }
 
-    // For fullscreen Sky
+    /* For fullscreen sky. */
     Pass
     {
       ZWrite Off
