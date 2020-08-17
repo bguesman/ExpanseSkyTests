@@ -115,6 +115,7 @@ Shader "HDRP/Sky/ExpanseSky"
 
     /* Loop through lights and accumulate direct illumination. */
     float3 L0 = float3(0, 0, 0);
+    bool celestialBodyHit = false;
     /* Put the loop inside the conditional so we only have to evaluate once. */
     if (intersection.groundHit) {
       for (int i = 0; i < min(4, _DirectionalLightCount); i++) {
@@ -124,7 +125,11 @@ Shader "HDRP/Sky/ExpanseSky"
         float cos_hit_l = dot(normalize(endPoint), L);
         float2 groundIrradianceUV = mapGroundIrradianceCoordinates(cos_hit_l);
         /* Direct lighting. */
-        L0 += _groundTintF3 * lightColor * (1.0 / PI) * saturate(cos_hit_l);
+        float3 albedoTexture = SAMPLE_TEXTURECUBE_LOD(_groundColorTexture,
+          sampler_Cubemap, normalize(endPoint), 0).rgb;
+        float3 emissiveTexture = SAMPLE_TEXTURECUBE_LOD(_groundEmissiveTexture,
+          sampler_Cubemap, normalize(endPoint), 0).rgb;
+        L0 += 2.0 * _groundTintF3 * albedoTexture * lightColor * (1.0 / PI) * saturate(cos_hit_l);
         /* Ground irradiance lighting. */
         float3 groundIrradianceAir =
           SAMPLE_TEXTURE2D(_GroundIrradianceTableAir,
@@ -135,6 +140,7 @@ Shader "HDRP/Sky/ExpanseSky"
         L0 += _groundTintF3 * lightColor
           * (_skyTintF3 * 2.0 * groundIrradianceAir
             + groundIrradianceAerosol);
+        L0 += emissiveTexture * _groundEmissiveMultiplier;
       }
     } else {
       for (int i = 0; i < _DirectionalLightCount; i++) {
@@ -146,10 +152,38 @@ Shader "HDRP/Sky/ExpanseSky"
         //float cosOuter = cos(radInner + light.flareSize);
         float3 lightColor = light.color;
         float3 luminance = computeCelestialBodyLuminance(lightColor, cosInner);
-        if (LdotV >= cosInner) {
+        if (LdotV >= cosInner && i == 0) {
+          celestialBodyHit = true;
           L0 += luminance * limbDarkening(LdotV, cosInner, _limbDarkening)
             * light.surfaceTint.rgb;
         }
+        if (i > 0) {
+          /* Light this like a moon. */
+          /* The sun: */
+          DirectionalLightData sun = _DirectionalLightDatas[0];
+          float3 sunDir = -normalize(sun.forward.xyz);
+
+          /* Moon properties. */
+          float moonDist = 384400000;
+          float moonRadius = radInner * moonDist;
+          float3 moonOriginInMoonFrame = float3(0, 0, 0);
+          float3 planetOriginInMoonFrame = float3(0, 0, 0) - (L * moonDist);
+
+          /* Intersect the moon at the point we're looking at. */
+          float3 moonIntersection = intersectSphere(planetOriginInMoonFrame, d, moonRadius);
+          if (moonIntersection.z > 0) {
+            celestialBodyHit = true;
+            float3 moonIntersectionPoint = planetOriginInMoonFrame + minNonNegative(moonIntersection.x, moonIntersection.y) * d;
+            float3 surfaceNormal = normalize(moonIntersectionPoint - moonOriginInMoonFrame);
+            L0 += saturate(dot(sunDir, surfaceNormal)) * sun.color * (1.0/PI) * normalize(light.color)/2;
+          }
+        }
+      }
+      /* Add the stars. */
+      if (!celestialBodyHit) {
+        float3 starTexture = SAMPLE_TEXTURECUBE_LOD(_nightSkyHDRI,
+          sampler_Cubemap, d, 0).rgb;
+        L0 += starTexture * _nightTintF3 * _nightIntensity;
       }
     }
 
@@ -167,6 +201,8 @@ Shader "HDRP/Sky/ExpanseSky"
      * HACK: clamping directional light count because of weird bug
      * where it's >100 for a sec. */
     float3 skyColor = float3(0, 0, 0);
+    float3 nightAirScattering = float3(0, 0, 0);
+    float3 starAerosolScattering = float3(0, 0, 0);
     if (intersection.groundHit || intersection.atmoHit) {
       int lightCount = _DirectionalLightCount;
       for (int i = 0; i < min(4, _DirectionalLightCount); i++) {
@@ -222,14 +258,87 @@ Shader "HDRP/Sky/ExpanseSky"
         skyColor +=
           (finalSingleScattering + finalMultipleScattering) * lightColor;
       }
+
+      /* HACK: to get some sort of approximation of rayleigh scattering
+       * for the ambient night color of the sky.
+       * TODO: actually compute the average color of the sky texture. */
+      TexCoord4D ssCoord_night = mapSingleScatteringCoordinates(r, mu, mu, 1.0,
+        _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
+       float3 singleScatteringContributionAirNight =
+         sampleTexture4D(_SingleScatteringTableAir, ssCoord_night);
+       float rayleighPhase_night = computeAirPhase(1.0);
+
+       float3 finalSingleScatteringNight = (2.0 * _skyTintF3 * _airCoefficientsF3
+         * singleScatteringContributionAirNight * rayleighPhase_night);
+
+       /* Sample multiple scattering. */
+       TexCoord4D msCoord_night = mapGlobalMultipleScatteringCoordinates(r, mu,
+         mu, 1, _atmosphereRadius, _planetRadius, t_hit,
+         intersection.groundHit);
+
+       float3 msAirNight =
+         sampleTexture4D(_GlobalMultipleScatteringTableAir, msCoord_night);
+
+       float3 finalMultipleScatteringNight = (2.0 * _skyTintF3
+         * _airCoefficientsF3 * msAirNight)
+         * _multipleScatteringMultiplier;
+
+      nightAirScattering = (finalSingleScatteringNight
+        + finalMultipleScatteringNight) * _nightTintF3 * _nightIntensity;
+
+
+
+
+      /* HACK: approximate star mie scattering by sampling all around the current
+       * point.
+       * TODO: this just doesn't actually matter all that much. */
+      float numStarAerosolSamples = 128;
+      for (int i = 0; i < numStarAerosolSamples; i++) {
+        float3 perturbation = fibonacciSphere(i, numStarAerosolSamples);
+        perturbation *= 0.25 - 0.5 * random(float2(float(i)/float(numStarAerosolSamples), float(i+1)/float(numStarAerosolSamples)));
+        float3 starAerosolL = normalize(d + perturbation);
+        float3 starTextureAerosol = SAMPLE_TEXTURECUBE_LOD(_nightSkyHDRI,
+          sampler_Cubemap, starAerosolL, 0).rgb;
+
+        float mu_l_star = clampCosine(dot(normalize(startPoint), starAerosolL));
+        float3 star_proj_L = normalize(starAerosolL - normalize(startPoint) * mu_l_star);
+        float3 star_proj_d = normalize(d - normalize(startPoint) * dot(normalize(startPoint), d));
+        float nu_star = clampCosine(dot(star_proj_L, star_proj_d));
+
+        float star_dot_L_d = dot(starAerosolL, d);
+        float starMiePhase = computeAerosolPhase(star_dot_L_d, 0.76);
+
+        TexCoord4D ssCoord_star = mapSingleScatteringCoordinates(r, mu, mu_l_star, nu_star,
+          _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
+       float3 singleScatteringContributionAerosolStars =
+         sampleTexture4D(_SingleScatteringTableAerosol, ssCoord_star);
+
+       float3 finalSingleScatteringStar = (_aerosolCoefficient
+         * singleScatteringContributionAerosolStars * starMiePhase);
+
+        /* Sample multiple scattering. */
+        TexCoord4D msCoord_star = mapGlobalMultipleScatteringCoordinates(r, mu, mu_l_star, nu_star,
+         _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
+
+        float3 msAerosolStar =
+         sampleTexture4D(_GlobalMultipleScatteringTableAerosol, msCoord_star);
+        float3 finalMSAerosolStar = (_aerosolCoefficient
+           * msAerosolStar * starMiePhase);
+
+        starAerosolScattering += (starTextureAerosol * _nightTintF3 * _nightIntensity * (finalSingleScatteringStar + finalMSAerosolStar)) / float(numStarAerosolSamples);
+      }
+
+
+
     }
+
+
 
     float3 finalDirectLighting = (L0 * T);
 
     float dither = 1.0 + _ditherAmount * (0.5 - random(d.xy));
     return dither * exposure * (finalDirectLighting
-      + skyColor
-      + (intersection.groundHit ? 0.0 : _nightTint * _nightIntensity));
+      + skyColor + nightAirScattering + starAerosolScattering);
   }
 
   float4 FragBaking(Varyings input) : SV_Target
@@ -242,15 +351,7 @@ Shader "HDRP/Sky/ExpanseSky"
     //UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
     float exposure = GetCurrentExposureMultiplier();
     return float4(RenderSky(input, exposure, float3(0, 0, 0)), 1.0);
-    /* HACK: Hacky 8x MSAA. */
-    /* return float4((RenderSky(input, exposure, float3(0, 0, 0))
-      + RenderSky(input, exposure, float3(0.0005, 0.0005, 0.0005))
-      + RenderSky(input, exposure, float3(-0.0005, 0.0005, -0.0005))
-      + RenderSky(input, exposure, float3(0.0005, -0.0005, -0.0005))
-      + RenderSky(input, exposure, float3(-0.0003, -0.0001, 0.0005))
-      + RenderSky(input, exposure, float3(0.0001, 0.0002, 0.0005))
-      + RenderSky(input, exposure, float3(0.0005, -0.0005, 0.0005))
-      + RenderSky(input, exposure, float3(-0.0003, -0.0005, 0.0002))) / 8.0, 1.0); */
+    /* TODO: anti aliasing?. */
   }
 
   ENDHLSL

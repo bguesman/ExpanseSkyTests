@@ -101,13 +101,13 @@ public class ExpanseSky : SkySettings
 
   /* Sampling. */
   [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
-  public ClampedIntParameter numberOfTransmittanceSamples = new ClampedIntParameter(10, 1, 128);
+  public ClampedIntParameter numberOfTransmittanceSamples = new ClampedIntParameter(10, 1, 256);
 
   [Tooltip("Specify the number of samples to use when sampling along the secondary ray.")]
-  public ClampedIntParameter numberOfScatteringSamples = new ClampedIntParameter(10, 1, 128);
+  public ClampedIntParameter numberOfScatteringSamples = new ClampedIntParameter(10, 1, 256);
 
   [Tooltip("Specify the number of samples to use when sampling the ground irradiance.")]
-  public ClampedIntParameter numberOfGroundIrradianceSamples = new ClampedIntParameter(10, 1, 128);
+  public ClampedIntParameter numberOfGroundIrradianceSamples = new ClampedIntParameter(10, 1, 256);
 
   [Tooltip("Specify whether or not to use importance sampling.")]
   public BoolParameter useImportanceSampling = new BoolParameter(true);

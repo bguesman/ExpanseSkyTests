@@ -167,54 +167,62 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
     float3 lightEndPoint = O + d * lightIntersection.endT;
     float t_light_hit = lightIntersection.endT - lightIntersection.startT;
 
-    if (lightIntersection.atmoHit) {
+    /* Compute the scaled densities of air and aerosol layers at the
+     * sample point. */
+    float scaledDensityAir = computeDensityExponential(samplePoint,
+      _planetRadius, _scaleHeightAir, _airDensity) * ds;
+    float scaledDensityAerosol = computeDensityExponential(samplePoint,
+      _planetRadius, _scaleHeightAerosols, _aerosolDensity) * ds;
 
-      /* Compute the scaled densities of air and aerosol layers at the
-       * sample point. */
-      float scaledDensityAir = computeDensityExponential(samplePoint,
-        _planetRadius, _scaleHeightAir, _airDensity) * ds;
-      float scaledDensityAerosol = computeDensityExponential(samplePoint,
-        _planetRadius, _scaleHeightAerosols, _aerosolDensity) * ds;
+    /* Compute transmittance from O to sample point, and then from sample
+     * point through to the light hit. */
+    float2 oToSample = mapTransmittanceCoordinates(length(startPoint),
+      mu, _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
 
-      /* Compute transmittance from O to sample point, and then from sample
-       * point through to the light hit. */
-      float2 oToSample = mapTransmittanceCoordinates(length(startPoint),
-        mu, _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
+    float3 T_oToSample = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+      s_linear_clamp_sampler, oToSample, 0).rgb;
 
-      float3 T_oToSample = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
-        s_linear_clamp_sampler, oToSample, 0).rgb;
-
-      /* If we didn't hit the ground, then our transmittance value for
-       * O to the sample point is too large---we need to divide out
-       * the transmittance from the sample point to the atmosphere. */
-      if (!intersection.groundHit) {
-        float2 sampleOut = mapTransmittanceCoordinates(length(lightStartPoint),
-          clampCosine(dot(normalize(lightStartPoint), d)), _atmosphereRadius, _planetRadius,
-          t_hit - sampleT, false);
-        float3 T_sampleOut = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
-          s_linear_clamp_sampler, sampleOut, 0).rgb;
-        /* Clamp sample out for division. */
-        T_sampleOut = max(T_sampleOut, FLT_EPSILON);
-        T_oToSample /= T_sampleOut;
-      }
-
-      inScatteringAirNoShadows += scaledDensityAir * T_oToSample;
-      inScatteringAerosolNoShadows += scaledDensityAerosol * T_oToSample;
-
-      if (!lightIntersection.groundHit) {
-        /* Compute the light hit point. */
-        float2 sampleToL = mapTransmittanceCoordinates(length(samplePoint),
-          clampCosine(dot(normalize(samplePoint), L)), _atmosphereRadius, _planetRadius,
-          t_light_hit, lightIntersection.groundHit);
-        /* Compute transmittance through sample to light hit point. */
-        float3 T_sampleToL = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
-          s_linear_clamp_sampler, sampleToL, 0).rgb;
-
-        float3 T = T_oToSample * T_sampleToL;
-        inScatteringAir += scaledDensityAir * T;
-        inScatteringAerosol += scaledDensityAerosol * T;
-      }
+    /* If we didn't hit the ground, then our transmittance value for
+     * O to the sample point is too large---we need to divide out
+     * the transmittance from the sample point to the atmosphere. */
+    if (!intersection.groundHit) {
+      float2 sampleOut = mapTransmittanceCoordinates(length(lightStartPoint),
+        clampCosine(dot(normalize(lightStartPoint), d)), _atmosphereRadius, _planetRadius,
+        t_hit - sampleT, false);
+      float3 T_sampleOut = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+        s_linear_clamp_sampler, sampleOut, 0).rgb;
+      /* Clamp sample out for division. */
+      T_sampleOut = max(T_sampleOut, FLT_EPSILON);
+      T_oToSample /= T_sampleOut;
     }
+
+    inScatteringAirNoShadows += scaledDensityAir * T_oToSample;
+    inScatteringAerosolNoShadows += scaledDensityAerosol * T_oToSample;
+
+    /* Compute the light transmittance to the sample point. */
+    float2 sampleToL = mapTransmittanceCoordinates(length(samplePoint),
+      clampCosine(dot(normalize(samplePoint), L)), _atmosphereRadius, _planetRadius,
+      t_light_hit, lightIntersection.groundHit);
+    /* Compute transmittance through sample to light hit point. */
+    float3 T_sampleToL = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+      s_linear_clamp_sampler, sampleToL, 0).rgb;
+
+    float3 T = T_oToSample * T_sampleToL;
+
+    if (lightIntersection.groundHit) {
+      if (!intersection.groundHit) {
+        /* We'll add the light scattered off the ground surface
+         * and TODO: the emissive texture.
+         * TODO: something looks off about this. */
+        float dot_L_sample = saturate(dot(normalize(L), normalize(lightEndPoint)));
+        inScatteringAir += scaledDensityAir * T * dot_L_sample * 2.0 *_groundTintF3;
+        inScatteringAerosol += scaledDensityAerosol * T * dot_L_sample * 2.0 *_groundTintF3;
+      }
+    } else {
+      inScatteringAir += scaledDensityAir * T;
+      inScatteringAerosol += scaledDensityAerosol * T;
+    }
+
   }
 
   _SingleScatteringTableAirRW[id] = inScatteringAir;
