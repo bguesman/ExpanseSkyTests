@@ -31,7 +31,7 @@ public class ExpanseSky : SkySettings
   public CubemapParameter groundColorTexture = new CubemapParameter(null);
 
   [Tooltip("Specify a color to tint the ground texture. If there is no ground texture specified, this is just the color of the ground.")]
-  public ColorParameter groundTint = new ColorParameter(Color.white, hdr: false, showAlpha: false, showEyeDropper: true);
+  public ColorParameter groundTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
   [Tooltip("Specify emissive parts of the ground.")]
   public CubemapParameter groundEmissiveTexture = new CubemapParameter(null);
@@ -44,7 +44,7 @@ public class ExpanseSky : SkySettings
   public CubemapParameter nightSkyHDRI = new CubemapParameter(null);
 
   [Tooltip("Specify a color to tint the night sky HDRI.")]
-  public ColorParameter nightTint = new ColorParameter(Color.white, hdr: false, showAlpha: false, showEyeDropper: true);
+  public ColorParameter nightTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
   [Tooltip("Specify the intensity of the night sky.")]
   public ClampedFloatParameter nightIntensity = new ClampedFloatParameter(10.0f, 0.0f, 100000.0f);
@@ -87,7 +87,7 @@ public class ExpanseSky : SkySettings
 
   /* Artistic overrides. */
   [Tooltip("Specify a tint to the overall sky color.")]
-  public ColorParameter skyTint = new ColorParameter(Color.white, hdr: false, showAlpha: false, showEyeDropper: true);
+  public ColorParameter skyTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
   [Tooltip("Makes the scattering of starlight due to aerosols artificially stronger or weaker.")]
   public ClampedFloatParameter starAerosolScatterMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 5.0f);
@@ -95,9 +95,68 @@ public class ExpanseSky : SkySettings
   [Tooltip("Multiplier on multiple scattering")]
   public ClampedFloatParameter multipleScatteringMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
 
-  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is physically accurate. Higher values will darken more, lower values will darken less. A value of 0.0 will turn off the effect entirely.")]
-  public ClampedFloatParameter limbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
+  /* Celestial Bodies. TODO: as of now, we support up to 4 celestial bodies.
+   * Settings such as angular diameter, angular position, distance,
+   * color, intensity, and surface tint are specified in the directional light
+   * object. But other settings, like limb darkening, cubemap textures,
+   * and whether the body is a sun or a moon have no parameter in the
+   * directional light itself, and so must be specified here if we aren't
+   * going to hack the Unity base code. */
+  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies.A value of 0.0 is physically "
+  + "accurate for bodies that are not emissive---it will turn off the effect "
+  + "entirely. Higher values will darken more, lower values will darken less.")]
+  public ClampedFloatParameter body1LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
+  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  public BoolParameter body1ReceivesLight = new BoolParameter(false);
+  [Tooltip("Specifies texture for surface albedo of celestial body #1.")]
+  public CubemapParameter body1SurfaceAlbedoTexture = new CubemapParameter(null);
+  [Tooltip("Specifies whether the body is emissive.")]
+  public BoolParameter body1Emissive = new BoolParameter(true);
+  [Tooltip("Specifies texture for surface albedo of celestial body #1.")]
+  public CubemapParameter body1EmissionTexture = new CubemapParameter(null);
 
+  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies.A value of 0.0 is physically "
+  + "accurate for bodies that are not emissive---it will turn off the effect "
+  + "entirely. Higher values will darken more, lower values will darken less.")]
+  public ClampedFloatParameter body2LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
+  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  public BoolParameter body2ReceivesLight = new BoolParameter(false);
+  [Tooltip("Specifies texture for surface albedo of celestial body #2.")]
+  public CubemapParameter body2SurfaceAlbedoTexture = new CubemapParameter(null);
+  [Tooltip("Specifies whether the body is emissive.")]
+  public BoolParameter body2Emissive = new BoolParameter(true);
+  [Tooltip("Specifies texture for surface albedo of celestial body #2.")]
+  public CubemapParameter body2EmissionTexture = new CubemapParameter(null);
+
+  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies.A value of 0.0 is physically "
+  + "accurate for bodies that are not emissive---it will turn off the effect "
+  + "entirely. Higher values will darken more, lower values will darken less.")]
+  public ClampedFloatParameter body3LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
+  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  public BoolParameter body3ReceivesLight = new BoolParameter(false);
+  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
+  public CubemapParameter body3SurfaceAlbedoTexture = new CubemapParameter(null);
+  [Tooltip("Specifies whether the body is emissive.")]
+  public BoolParameter body3Emissive = new BoolParameter(true);
+  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
+  public CubemapParameter body3EmissionTexture = new CubemapParameter(null);
+
+  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies.A value of 0.0 is physically "
+  + "accurate for bodies that are not emissive---it will turn off the effect "
+  + "entirely. Higher values will darken more, lower values will darken less.")]
+  public ClampedFloatParameter body4LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
+  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  public BoolParameter body4ReceivesLight = new BoolParameter(false);
+  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
+  public CubemapParameter body4SurfaceAlbedoTexture = new CubemapParameter(null);
+  [Tooltip("Specifies whether the body is emissive.")]
+  public BoolParameter body4Emissive = new BoolParameter(true);
+  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
+  public CubemapParameter body4EmissionTexture = new CubemapParameter(null);
 
   /* Sampling. */
   [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
@@ -113,7 +172,7 @@ public class ExpanseSky : SkySettings
   public BoolParameter useImportanceSampling = new BoolParameter(true);
 
   [Tooltip("Controls amount of dithering used to reduce color banding. If this is too high, noise will be visible.")]
-  public ClampedFloatParameter ditherAmount = new ClampedFloatParameter(0.01f, 0.0f, 1.0f);
+  public ClampedFloatParameter ditherAmount = new ClampedFloatParameter(0.05f, 0.0f, 1.0f);
 
   /********************************************************************************/
   /******************************* End Parameters ***********************************/

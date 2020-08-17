@@ -175,7 +175,12 @@ Shader "HDRP/Sky/ExpanseSky"
             celestialBodyHit = true;
             float3 moonIntersectionPoint = planetOriginInMoonFrame + minNonNegative(moonIntersection.x, moonIntersection.y) * d;
             float3 surfaceNormal = normalize(moonIntersectionPoint - moonOriginInMoonFrame);
-            L0 += saturate(dot(sunDir, surfaceNormal)) * sun.color * (1.0/PI) * normalize(light.color)/2;
+
+
+            float3 moonColor = SAMPLE_TEXTURECUBE_LOD(_groundEmissiveTexture,
+              sampler_Cubemap, surfaceNormal, 0).rgb;
+
+            L0 += saturate(dot(sunDir, surfaceNormal)) * sun.color * (0.75/PI) * moonColor;
           }
         }
       }
@@ -284,52 +289,7 @@ Shader "HDRP/Sky/ExpanseSky"
          * _multipleScatteringMultiplier;
 
       nightAirScattering = (finalSingleScatteringNight
-        + finalMultipleScatteringNight) * _nightTintF3 * _nightIntensity;
-
-
-
-
-      /* HACK: approximate star mie scattering by sampling all around the current
-       * point.
-       * TODO: this just doesn't actually matter all that much. */
-      float numStarAerosolSamples = 128;
-      for (int i = 0; i < numStarAerosolSamples; i++) {
-        float3 perturbation = fibonacciSphere(i, numStarAerosolSamples);
-        perturbation *= 0.25 - 0.5 * random(float2(float(i)/float(numStarAerosolSamples), float(i+1)/float(numStarAerosolSamples)));
-        float3 starAerosolL = normalize(d + perturbation);
-        float3 starTextureAerosol = SAMPLE_TEXTURECUBE_LOD(_nightSkyHDRI,
-          sampler_Cubemap, starAerosolL, 0).rgb;
-
-        float mu_l_star = clampCosine(dot(normalize(startPoint), starAerosolL));
-        float3 star_proj_L = normalize(starAerosolL - normalize(startPoint) * mu_l_star);
-        float3 star_proj_d = normalize(d - normalize(startPoint) * dot(normalize(startPoint), d));
-        float nu_star = clampCosine(dot(star_proj_L, star_proj_d));
-
-        float star_dot_L_d = dot(starAerosolL, d);
-        float starMiePhase = computeAerosolPhase(star_dot_L_d, 0.76);
-
-        TexCoord4D ssCoord_star = mapSingleScatteringCoordinates(r, mu, mu_l_star, nu_star,
-          _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
-       float3 singleScatteringContributionAerosolStars =
-         sampleTexture4D(_SingleScatteringTableAerosol, ssCoord_star);
-
-       float3 finalSingleScatteringStar = (_aerosolCoefficient
-         * singleScatteringContributionAerosolStars * starMiePhase);
-
-        /* Sample multiple scattering. */
-        TexCoord4D msCoord_star = mapGlobalMultipleScatteringCoordinates(r, mu, mu_l_star, nu_star,
-         _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
-
-        float3 msAerosolStar =
-         sampleTexture4D(_GlobalMultipleScatteringTableAerosol, msCoord_star);
-        float3 finalMSAerosolStar = (_aerosolCoefficient
-           * msAerosolStar * starMiePhase);
-
-        starAerosolScattering += (starTextureAerosol * _nightTintF3 * _nightIntensity * (finalSingleScatteringStar + finalMSAerosolStar)) / float(numStarAerosolSamples);
-      }
-
-
-
+        + finalMultipleScatteringNight) * _nightTintF3 * _nightIntensity/8.0;
     }
 
 
