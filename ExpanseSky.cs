@@ -28,20 +28,20 @@ public class ExpanseSky : SkySettings
   public ClampedFloatParameter planetRadius = new ClampedFloatParameter(6360000, 0, 20000000);
 
   [Tooltip("Specify the ground albedo.")]
-  public CubemapParameter groundColorTexture = new CubemapParameter(null);
+  public CubemapParameter groundAlbedoTexture = new CubemapParameter(null);
 
   [Tooltip("Specify a color to tint the ground texture. If there is no ground texture specified, this is just the color of the ground.")]
   public ColorParameter groundTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
   [Tooltip("Specify emissive parts of the ground.")]
-  public CubemapParameter groundEmissiveTexture = new CubemapParameter(null);
+  public CubemapParameter groundEmissionTexture = new CubemapParameter(null);
 
-  [Tooltip("Specify a multiplier on the ground emissive texture.")]
-  public ClampedFloatParameter groundEmissiveMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 100000.0f);
+  [Tooltip("Specify a multiplier on the ground emission texture.")]
+  public ClampedFloatParameter groundEmissionMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 100000.0f);
 
   /* Night Sky Parameters. */
   [Tooltip("Specify the cubemap HDRP uses to render the sky.")]
-  public CubemapParameter nightSkyHDRI = new CubemapParameter(null);
+  public CubemapParameter nightSkyTexture = new CubemapParameter(null);
 
   [Tooltip("Specify a color to tint the night sky HDRI.")]
   public ColorParameter nightTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
@@ -89,9 +89,6 @@ public class ExpanseSky : SkySettings
   [Tooltip("Specify a tint to the overall sky color.")]
   public ColorParameter skyTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
-  [Tooltip("Makes the scattering of starlight due to aerosols artificially stronger or weaker.")]
-  public ClampedFloatParameter starAerosolScatterMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 5.0f);
-
   [Tooltip("Multiplier on multiple scattering")]
   public ClampedFloatParameter multipleScatteringMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
 
@@ -102,71 +99,73 @@ public class ExpanseSky : SkySettings
    * and whether the body is a sun or a moon have no parameter in the
    * directional light itself, and so must be specified here if we aren't
    * going to hack the Unity base code. */
-  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies.A value of 0.0 is physically "
-  + "accurate for bodies that are not emissive---it will turn off the effect "
+  [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body1LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
   [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
   public BoolParameter body1ReceivesLight = new BoolParameter(false);
   [Tooltip("Specifies texture for surface albedo of celestial body #1.")]
-  public CubemapParameter body1SurfaceAlbedoTexture = new CubemapParameter(null);
+  public CubemapParameter body1AlbedoTexture = new CubemapParameter(null);
   [Tooltip("Specifies whether the body is emissive.")]
   public BoolParameter body1Emissive = new BoolParameter(true);
   [Tooltip("Specifies texture for surface albedo of celestial body #1.")]
   public CubemapParameter body1EmissionTexture = new CubemapParameter(null);
 
-  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies.A value of 0.0 is physically "
-  + "accurate for bodies that are not emissive---it will turn off the effect "
+  [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body2LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
   [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
   public BoolParameter body2ReceivesLight = new BoolParameter(false);
   [Tooltip("Specifies texture for surface albedo of celestial body #2.")]
-  public CubemapParameter body2SurfaceAlbedoTexture = new CubemapParameter(null);
+  public CubemapParameter body2AlbedoTexture = new CubemapParameter(null);
   [Tooltip("Specifies whether the body is emissive.")]
   public BoolParameter body2Emissive = new BoolParameter(true);
   [Tooltip("Specifies texture for surface albedo of celestial body #2.")]
   public CubemapParameter body2EmissionTexture = new CubemapParameter(null);
 
-  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies.A value of 0.0 is physically "
-  + "accurate for bodies that are not emissive---it will turn off the effect "
+  [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body3LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
   [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
   public BoolParameter body3ReceivesLight = new BoolParameter(false);
   [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
-  public CubemapParameter body3SurfaceAlbedoTexture = new CubemapParameter(null);
+  public CubemapParameter body3AlbedoTexture = new CubemapParameter(null);
   [Tooltip("Specifies whether the body is emissive.")]
   public BoolParameter body3Emissive = new BoolParameter(true);
   [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
   public CubemapParameter body3EmissionTexture = new CubemapParameter(null);
 
-  [Tooltip("Darkens the edges of celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies.A value of 0.0 is physically "
-  + "accurate for bodies that are not emissive---it will turn off the effect "
+  [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
+  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body4LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
   [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
   public BoolParameter body4ReceivesLight = new BoolParameter(false);
-  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
-  public CubemapParameter body4SurfaceAlbedoTexture = new CubemapParameter(null);
+  [Tooltip("Specifies texture for surface albedo of celestial body #4.")]
+  public CubemapParameter body4AlbedoTexture = new CubemapParameter(null);
   [Tooltip("Specifies whether the body is emissive.")]
   public BoolParameter body4Emissive = new BoolParameter(true);
-  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
+  [Tooltip("Specifies texture for surface albedo of celestial body #4.")]
   public CubemapParameter body4EmissionTexture = new CubemapParameter(null);
 
   /* Sampling. */
   [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
   public ClampedIntParameter numberOfTransmittanceSamples = new ClampedIntParameter(10, 1, 256);
 
-  [Tooltip("Specify the number of samples to use when sampling along the secondary ray.")]
+  [Tooltip("Specify the number of samples to use when sampling along the secondary ray in the single scattering computation.")]
   public ClampedIntParameter numberOfScatteringSamples = new ClampedIntParameter(10, 1, 256);
 
   [Tooltip("Specify the number of samples to use when sampling the ground irradiance.")]
   public ClampedIntParameter numberOfGroundIrradianceSamples = new ClampedIntParameter(10, 1, 256);
+
+  [Tooltip("Specify the number of samples to use when computing the initial isotropic estimate of multiple scattering.")]
+  public ClampedIntParameter numberOfMultipleScatteringSamples = new ClampedIntParameter(10, 1, 256);
+
+  [Tooltip("Specify the number of samples to use when computing the actual accumulated estimate of multiple scattering from the isotropic estimate.")]
+  public ClampedIntParameter numberOfMultipleScatteringAccumulationSamples = new ClampedIntParameter(10, 1, 256);
 
   [Tooltip("Specify whether or not to use importance sampling.")]
   public BoolParameter useImportanceSampling = new BoolParameter(true);
@@ -193,33 +192,71 @@ public class ExpanseSky : SkySettings
     int hash = base.GetHashCode();
     unchecked
     {
+      /* Planet. */
       hash = hash * 23 + atmosphereThickness.value.GetHashCode();
       hash = hash * 23 + planetRadius.value.GetHashCode();
-      hash = groundColorTexture.value != null ? hash * 23 + groundColorTexture.GetHashCode() : hash;
+      hash = groundAlbedoTexture.value != null ? hash * 23 + groundAlbedoTexture.GetHashCode() : hash;
       hash = hash * 23 + groundTint.value.GetHashCode();
-      hash = groundEmissiveTexture.value != null ? hash * 23 + groundEmissiveTexture.GetHashCode() : hash;
-      hash = hash * 23 + groundEmissiveMultiplier.value.GetHashCode();
-      hash = nightSkyHDRI.value != null ? hash * 23 + nightSkyHDRI.GetHashCode() : hash;
+      hash = groundEmissionTexture.value != null ? hash * 23 + groundEmissionTexture.GetHashCode() : hash;
+      hash = hash * 23 + groundEmissionMultiplier.value.GetHashCode();
+
+      /* Night sky. */
+      hash = nightSkyTexture.value != null ? hash * 23 + nightSkyTexture.GetHashCode() : hash;
       hash = hash * 23 + nightTint.value.GetHashCode();
       hash = hash * 23 + nightIntensity.value.GetHashCode();
+
+      /* Aerosols. */
       hash = hash * 23 + aerosolCoefficient.value.GetHashCode();
       hash = hash * 23 + scaleHeightAerosols.value.GetHashCode();
       hash = hash * 23 + aerosolAnisotropy.value.GetHashCode();
       hash = hash * 23 + aerosolDensity.value.GetHashCode();
+
+      /* Air. */
       hash = hash * 23 + airCoefficients.value.GetHashCode();
       hash = hash * 23 + scaleHeightAir.value.GetHashCode();
       hash = hash * 23 + airDensity.value.GetHashCode();
+
+      /* Ozone. */
       hash = hash * 23 + ozoneCoefficients.value.GetHashCode();
       hash = hash * 23 + ozoneThickness.value.GetHashCode();
       hash = hash * 23 + ozoneHeight.value.GetHashCode();
       hash = hash * 23 + ozoneDensity.value.GetHashCode();
+
+      /* Artistic overrides. */
       hash = hash * 23 + skyTint.value.GetHashCode();
-      hash = hash * 23 + starAerosolScatterMultiplier.value.GetHashCode();
       hash = hash * 23 + multipleScatteringMultiplier.value.GetHashCode();
-      hash = hash * 23 + limbDarkening.value.GetHashCode();
+
+      /* Celestial bodies. */
+      hash = hash * 23 + body1LimbDarkening.value.GetHashCode();
+      hash = hash * 23 + body1ReceivesLight.value.GetHashCode();
+      hash = body1AlbedoTexture.value != null ? hash * 23 + body1AlbedoTexture.GetHashCode() : hash;
+      hash = hash * 23 + body1Emissive.value.GetHashCode();
+      hash = body1EmissionTexture.value != null ? hash * 23 + body1EmissionTexture.GetHashCode() : hash;
+
+      hash = hash * 23 + body2LimbDarkening.value.GetHashCode();
+      hash = hash * 23 + body2ReceivesLight.value.GetHashCode();
+      hash = body2AlbedoTexture.value != null ? hash * 23 + body2AlbedoTexture.GetHashCode() : hash;
+      hash = hash * 23 + body2Emissive.value.GetHashCode();
+      hash = body2EmissionTexture.value != null ? hash * 23 + body2EmissionTexture.GetHashCode() : hash;
+
+      hash = hash * 23 + body3LimbDarkening.value.GetHashCode();
+      hash = hash * 23 + body3ReceivesLight.value.GetHashCode();
+      hash = body3AlbedoTexture.value != null ? hash * 23 + body3AlbedoTexture.GetHashCode() : hash;
+      hash = hash * 23 + body3Emissive.value.GetHashCode();
+      hash = body3EmissionTexture.value != null ? hash * 23 + body3EmissionTexture.GetHashCode() : hash;
+
+      hash = hash * 23 + body4LimbDarkening.value.GetHashCode();
+      hash = hash * 23 + body4ReceivesLight.value.GetHashCode();
+      hash = body4AlbedoTexture.value != null ? hash * 23 + body4AlbedoTexture.GetHashCode() : hash;
+      hash = hash * 23 + body4Emissive.value.GetHashCode();
+      hash = body4EmissionTexture.value != null ? hash * 23 + body4EmissionTexture.GetHashCode() : hash;
+
+      /* Sampling. */
       hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
       hash = hash * 23 + numberOfScatteringSamples.value.GetHashCode();
       hash = hash * 23 + numberOfGroundIrradianceSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfMultipleScatteringSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfMultipleScatteringAccumulationSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
       hash = hash * 23 + ditherAmount.value.GetHashCode();
     }
@@ -248,6 +285,8 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
       hash = hash * 23 + numberOfScatteringSamples.value.GetHashCode();
       hash = hash * 23 + numberOfGroundIrradianceSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfMultipleScatteringSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfMultipleScatteringAccumulationSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
     }
     return hash;

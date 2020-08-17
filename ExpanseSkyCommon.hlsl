@@ -28,6 +28,8 @@ float _ozoneDensity;
 int _numberOfTransmittanceSamples;
 int _numberOfScatteringSamples;
 int _numberOfGroundIrradianceSamples;
+int _numberOfMultipleScatteringSamples;
+int _numberOfMultipleScatteringAccumulationSamples;
 bool _useImportanceSampling;
 
 /* Easier to type... */

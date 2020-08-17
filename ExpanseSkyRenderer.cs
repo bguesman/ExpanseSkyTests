@@ -13,11 +13,14 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _atmosphereThicknessID = Shader.PropertyToID("_atmosphereThickness");
     public static readonly int _atmosphereRadiusID = Shader.PropertyToID("_atmosphereRadius");
     public static readonly int _planetRadiusID = Shader.PropertyToID("_planetRadius");
-    public static readonly int _groundColorTextureID = Shader.PropertyToID("_groundColorTexture");
+    public static readonly int _groundAlbedoTextureID = Shader.PropertyToID("_groundAlbedoTexture");
+    public static readonly int _hasGroundAlbedoTextureID = Shader.PropertyToID("_hasGroundAlbedoTexture");
     public static readonly int _groundTintID = Shader.PropertyToID("_groundTint");
-    public static readonly int _groundEmissiveTextureID = Shader.PropertyToID("_groundEmissiveTexture");
-    public static readonly int _groundEmissiveMultiplierID = Shader.PropertyToID("_groundEmissiveMultiplier");
-    public static readonly int _nightSkyHDRIID = Shader.PropertyToID("_nightSkyHDRI");
+    public static readonly int _groundEmissionTextureID = Shader.PropertyToID("_groundEmissionTexture");
+    public static readonly int _hasGroundEmissionTextureID = Shader.PropertyToID("_hasGroundEmissionTexture");
+    public static readonly int _groundEmissionMultiplierID = Shader.PropertyToID("_groundEmissionMultiplier");
+    public static readonly int _nightSkyTextureID = Shader.PropertyToID("_nightSkyTexture");
+    public static readonly int _hasNightSkyTextureID = Shader.PropertyToID("_hasNightSkyTexture");
     public static readonly int _nightTintID = Shader.PropertyToID("_nightTint");
     public static readonly int _nightIntensityID = Shader.PropertyToID("_nightIntensity");
     public static readonly int _aerosolCoefficientID = Shader.PropertyToID("_aerosolCoefficient");
@@ -32,14 +35,49 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _ozoneHeightID = Shader.PropertyToID("_ozoneHeight");
     public static readonly int _ozoneDensityID = Shader.PropertyToID("_ozoneDensity");
     public static readonly int _skyTintID = Shader.PropertyToID("_skyTint");
-    public static readonly int _starAerosolScatterMultiplierID = Shader.PropertyToID("_starAerosolScatterMultiplier");
     public static readonly int _multipleScatteringMultiplierID = Shader.PropertyToID("_multipleScatteringMultiplier");
     public static readonly int _limbDarkeningID = Shader.PropertyToID("_limbDarkening");
     public static readonly int _numberOfTransmittanceSamplesID = Shader.PropertyToID("_numberOfTransmittanceSamples");
     public static readonly int _numberOfScatteringSamplesID = Shader.PropertyToID("_numberOfScatteringSamples");
     public static readonly int _numberOfGroundIrradianceSamplesID = Shader.PropertyToID("_numberOfGroundIrradianceSamples");
+    public static readonly int _numberOfMultipleScatteringSamplesID = Shader.PropertyToID("_numberOfMultipleScatteringSamples");
+    public static readonly int _numberOfMultipleScatteringAccumulationSamplesID = Shader.PropertyToID("_numberOfMultipleScatteringAccumulationSamples");
     public static readonly int _useImportanceSamplingID = Shader.PropertyToID("_useImportanceSampling");
     public static readonly int _ditherAmountID = Shader.PropertyToID("_ditherAmount");
+
+    /* Celestial bodies. */
+    /* Body 1. */
+    public static readonly int _body1LimbDarkeningID = Shader.PropertyToID("_body1LimbDarkening");
+    public static readonly int _body1ReceivesLightID = Shader.PropertyToID("_body1ReceivesLight");
+    public static readonly int _body1AlbedoTextureID = Shader.PropertyToID("_body1AlbedoTexture");
+    public static readonly int _body1HasAlbedoTextureID = Shader.PropertyToID("_body1HasAlbedoTexture");
+    public static readonly int _body1EmissiveID = Shader.PropertyToID("_body1Emissive");
+    public static readonly int _body1EmissionTextureID = Shader.PropertyToID("_body1EmissionTexture");
+    public static readonly int _body1HasEmissionTextureID = Shader.PropertyToID("_body1HasEmissionTexture");
+    /* Body 2. */
+    public static readonly int _body2LimbDarkeningID = Shader.PropertyToID("_body2LimbDarkening");
+    public static readonly int _body2ReceivesLightID = Shader.PropertyToID("_body2ReceivesLight");
+    public static readonly int _body2AlbedoTextureID = Shader.PropertyToID("_body2AlbedoTexture");
+    public static readonly int _body2HasAlbedoTextureID = Shader.PropertyToID("_body2HasAlbedoTexture");
+    public static readonly int _body2EmissiveID = Shader.PropertyToID("_body2Emissive");
+    public static readonly int _body2EmissionTextureID = Shader.PropertyToID("_body2EmissionTexture");
+    public static readonly int _body2HasEmissionTextureID = Shader.PropertyToID("_body2HasEmissionTexture");
+    /* Body 3. */
+    public static readonly int _body3LimbDarkeningID = Shader.PropertyToID("_body3LimbDarkening");
+    public static readonly int _body3ReceivesLightID = Shader.PropertyToID("_body3ReceivesLight");
+    public static readonly int _body3AlbedoTextureID = Shader.PropertyToID("_body3AlbedoTexture");
+    public static readonly int _body3HasAlbedoTextureID = Shader.PropertyToID("_body3HasAlbedoTexture");
+    public static readonly int _body3EmissiveID = Shader.PropertyToID("_body3Emissive");
+    public static readonly int _body3EmissionTextureID = Shader.PropertyToID("_body3EmissionTexture");
+    public static readonly int _body3HasEmissionTextureID = Shader.PropertyToID("_body3HasEmissionTexture");
+    /* Body 4. */
+    public static readonly int _body4LimbDarkeningID = Shader.PropertyToID("_body4LimbDarkening");
+    public static readonly int _body4ReceivesLightID = Shader.PropertyToID("_body4ReceivesLight");
+    public static readonly int _body4AlbedoTextureID = Shader.PropertyToID("_body4AlbedoTexture");
+    public static readonly int _body4HasAlbedoTextureID = Shader.PropertyToID("_body4HasAlbedoTexture");
+    public static readonly int _body4EmissiveID = Shader.PropertyToID("_body4Emissive");
+    public static readonly int _body4EmissionTextureID = Shader.PropertyToID("_body4EmissionTexture");
+    public static readonly int _body4HasEmissionTextureID = Shader.PropertyToID("_body4HasEmissionTexture");
 
     public static readonly int _WorldSpaceCameraPos1ID = Shader.PropertyToID("_WorldSpaceCameraPos1");
     public static readonly int _ViewMatrix1ID = Shader.PropertyToID("_ViewMatrix1");
@@ -60,7 +98,8 @@ class ExpanseSkyRenderer : SkyRenderer
     /************************** End Shader Variable ID's ****************************/
     /********************************************************************************/
 
-    /* Dimensions of precomputed tables. */
+    /* Dimensions of precomputed tables.
+     * TODO: rename phi to mu. */
     const int TransmittanceTableSizeH = 32;
     const int TransmittanceTableSizePhi = 128;
 
@@ -284,24 +323,36 @@ class ExpanseSkyRenderer : SkyRenderer
 
         /* Set the parameters that need to be used for sky table
          * precomputation, aka, everything in ExpanseSkyCommon.hlsl. */
+
+        /* Planet. */
         cmd.SetGlobalFloat(_atmosphereThicknessID, expanseSky.atmosphereThickness.value);
         cmd.SetGlobalFloat(_planetRadiusID, expanseSky.planetRadius.value);
         cmd.SetGlobalFloat(_atmosphereRadiusID, expanseSky.atmosphereThickness.value + expanseSky.planetRadius.value);
         cmd.SetGlobalVector(_groundTintID, expanseSky.groundTint.value);
+
+        /* Aerosols. */
         cmd.SetGlobalFloat(_aerosolCoefficientID, expanseSky.aerosolCoefficient.value);
         cmd.SetGlobalFloat(_scaleHeightAerosolsID, expanseSky.scaleHeightAerosols.value);
         cmd.SetGlobalFloat(_aerosolAnisotropyID, expanseSky.aerosolAnisotropy.value);
         cmd.SetGlobalFloat(_aerosolDensityID, expanseSky.aerosolDensity.value);
+
+        /* Air. */
         cmd.SetGlobalVector(_airCoefficientsID, expanseSky.airCoefficients.value);
         cmd.SetGlobalFloat(_scaleHeightAirID, expanseSky.scaleHeightAir.value);
         cmd.SetGlobalFloat(_airDensityID, expanseSky.airDensity.value);
+
+        /* Ozone. */
         cmd.SetGlobalVector(_ozoneCoefficientsID, expanseSky.ozoneCoefficients.value);
         cmd.SetGlobalFloat(_ozoneThicknessID, expanseSky.ozoneThickness.value);
         cmd.SetGlobalFloat(_ozoneHeightID, expanseSky.ozoneHeight.value);
         cmd.SetGlobalFloat(_ozoneDensityID, expanseSky.ozoneDensity.value);
+
+        /* Sampling. */
         cmd.SetGlobalInt(_numberOfTransmittanceSamplesID, expanseSky.numberOfTransmittanceSamples.value);
         cmd.SetGlobalInt(_numberOfScatteringSamplesID, expanseSky.numberOfScatteringSamples.value);
         cmd.SetGlobalInt(_numberOfGroundIrradianceSamplesID, expanseSky.numberOfGroundIrradianceSamples.value);
+        cmd.SetGlobalInt(_numberOfMultipleScatteringSamplesID, expanseSky.numberOfMultipleScatteringSamples.value);
+        cmd.SetGlobalInt(_numberOfMultipleScatteringAccumulationSamplesID, expanseSky.numberOfMultipleScatteringAccumulationSamples.value);
         cmd.SetGlobalFloat(_useImportanceSamplingID, expanseSky.useImportanceSampling.value ? 1f : 0f);
 
         /* Set the texture for the actual sky shader. */
@@ -425,17 +476,81 @@ class ExpanseSkyRenderer : SkyRenderer
             int passID = renderForCubemap ? m_RenderCubemapID : m_RenderFullscreenSkyID;
 
             /* Set the shader uniform variables. */
-            m_PropertyBlock.SetTexture(_groundColorTextureID, expanseSky.groundColorTexture.value);
-            m_PropertyBlock.SetTexture(_groundEmissiveTextureID, expanseSky.groundEmissiveTexture.value);
-            m_PropertyBlock.SetFloat(_groundEmissiveMultiplierID, expanseSky.groundEmissiveMultiplier.value);
-            m_PropertyBlock.SetTexture(_nightSkyHDRIID, expanseSky.nightSkyHDRI.value);
+            if (expanseSky.groundAlbedoTexture.value != null) {
+              m_PropertyBlock.SetTexture(_groundAlbedoTextureID, expanseSky.groundAlbedoTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_hasGroundAlbedoTextureID, (expanseSky.groundAlbedoTexture.value == null) ? 0f : 1f);
+
+            if (expanseSky.groundEmissionTexture.value != null) {
+              m_PropertyBlock.SetTexture(_groundEmissionTextureID, expanseSky.groundEmissionTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_hasGroundEmissionTextureID, (expanseSky.groundEmissionTexture.value == null) ? 0f : 1f);
+
+            m_PropertyBlock.SetFloat(_groundEmissionMultiplierID, expanseSky.groundEmissionMultiplier.value);
+
+            if (expanseSky.nightSkyTexture.value != null) {
+              m_PropertyBlock.SetTexture(_nightSkyTextureID, expanseSky.nightSkyTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_hasNightSkyTextureID, (expanseSky.nightSkyTexture.value == null) ? 0f : 1f);
+
             m_PropertyBlock.SetVector(_nightTintID, expanseSky.nightTint.value);
             m_PropertyBlock.SetFloat(_nightIntensityID, expanseSky.nightIntensity.value);
             m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
-            m_PropertyBlock.SetFloat(_starAerosolScatterMultiplierID, expanseSky.starAerosolScatterMultiplier.value);
             m_PropertyBlock.SetFloat(_multipleScatteringMultiplierID, expanseSky.multipleScatteringMultiplier.value);
-            m_PropertyBlock.SetFloat(_limbDarkeningID, expanseSky.limbDarkening.value);
             m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value);
+
+            /* Celestial bodies. */
+            /* Body 1. */
+            m_PropertyBlock.SetFloat(_body1LimbDarkeningID, expanseSky.body1LimbDarkening.value);
+            m_PropertyBlock.SetFloat(_body1ReceivesLightID, expanseSky.body1ReceivesLight.value ? 1f : 0f);
+            if (expanseSky.body1AlbedoTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body1AlbedoTextureID, expanseSky.body1AlbedoTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body1HasAlbedoTextureID, (expanseSky.body1EmissionTexture.value == null) ? 0f : 1f);
+            m_PropertyBlock.SetFloat(_body1EmissiveID, expanseSky.body1Emissive.value ? 1f : 0f);
+            if (expanseSky.body1EmissionTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body1EmissionTextureID, expanseSky.body1EmissionTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body1HasEmissionTextureID, (expanseSky.body1EmissionTexture.value == null) ? 0f : 1f);
+
+            /* Body 2. */
+            m_PropertyBlock.SetFloat(_body2LimbDarkeningID, expanseSky.body2LimbDarkening.value);
+            m_PropertyBlock.SetFloat(_body2ReceivesLightID, expanseSky.body2ReceivesLight.value ? 1f : 0f);
+            if (expanseSky.body2AlbedoTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body2AlbedoTextureID, expanseSky.body2AlbedoTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body2HasAlbedoTextureID, (expanseSky.body2AlbedoTexture.value == null) ? 0f : 1f);
+            m_PropertyBlock.SetFloat(_body2EmissiveID, expanseSky.body2Emissive.value ? 1f : 0f);
+            if (expanseSky.body2EmissionTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body2EmissionTextureID, expanseSky.body2EmissionTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body2HasEmissionTextureID, (expanseSky.body2EmissionTexture.value == null) ? 0f : 1f);
+
+            /* Body 3. */
+            m_PropertyBlock.SetFloat(_body3LimbDarkeningID, expanseSky.body3LimbDarkening.value);
+            m_PropertyBlock.SetFloat(_body3ReceivesLightID, expanseSky.body3ReceivesLight.value ? 1f : 0f);
+            if (expanseSky.body3AlbedoTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body3AlbedoTextureID, expanseSky.body3AlbedoTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body3HasAlbedoTextureID, (expanseSky.body3AlbedoTexture.value == null) ? 0f : 1f);
+            m_PropertyBlock.SetFloat(_body3EmissiveID, expanseSky.body3Emissive.value ? 1f : 0f);
+            if (expanseSky.body3EmissionTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body3EmissionTextureID, expanseSky.body3EmissionTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body3HasEmissionTextureID, (expanseSky.body3EmissionTexture.value == null) ? 0f : 1f);
+
+            /* Body 4. */
+            m_PropertyBlock.SetFloat(_body4LimbDarkeningID, expanseSky.body4LimbDarkening.value);
+            m_PropertyBlock.SetFloat(_body4ReceivesLightID, expanseSky.body4ReceivesLight.value ? 1f : 0f);
+            if (expanseSky.body4AlbedoTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body4AlbedoTextureID, expanseSky.body4AlbedoTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body4HasAlbedoTextureID, (expanseSky.body4AlbedoTexture.value == null) ? 0f : 1f);
+            m_PropertyBlock.SetFloat(_body4EmissiveID, expanseSky.body4Emissive.value ? 1f : 0f);
+            if (expanseSky.body4EmissionTexture.value != null) {
+              m_PropertyBlock.SetTexture(_body4EmissionTextureID, expanseSky.body4EmissionTexture.value);
+            }
+            m_PropertyBlock.SetFloat(_body4HasEmissionTextureID, (expanseSky.body4EmissionTexture.value == null) ? 0f : 1f);
 
             m_PropertyBlock.SetVector(_WorldSpaceCameraPos1ID, builtinParams.worldSpaceCameraPos);
             m_PropertyBlock.SetMatrix(_ViewMatrix1ID, builtinParams.viewMatrix);

@@ -13,26 +13,72 @@ Shader "HDRP/Sky/ExpanseSky"
   /* Unity. */
   #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Common.hlsl"
   #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonLighting.hlsl"
+  #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Lighting/LightDefinition.cs.hlsl"
   #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Sky/SkyUtils.hlsl"
+  #include "Packages/com.unity.render-pipelines.high-definition/Runtime/Lighting/LightLoop/CookieSampling.hlsl"
 
   /* Common functions and global variables. */
   #include "Assets/CustomSky/ExpanseSky/code/ExpanseSkyCommon.hlsl"
+
+/* TODO: had to remove a check that physically based sky was active in
+ * the main light loop C# script to get additional light data like light
+ * distance. Is there a way to avoid hacking the source? EDIT: also looks
+ * like it resets it every time you open the editor. */
 
 /********************************************************************************/
 /****************************** UNIFORM VARIABLES *******************************/
 /********************************************************************************/
 
-  TEXTURECUBE(_groundColorTexture);
-  TEXTURECUBE(_groundEmissiveTexture);
-  float _groundEmissiveMultiplier;
-  TEXTURECUBE(_nightSkyHDRI);
+  TEXTURECUBE(_groundAlbedoTexture);
+  bool _hasGroundAlbedoTexture;
+  TEXTURECUBE(_groundEmissionTexture);
+  bool _hasGroundEmissionTexture;
+  float _groundEmissionMultiplier;
+  TEXTURECUBE(_nightSkyTexture);
+  bool _hasNightSkyTexture;
   float4 _nightTint;
   float _nightIntensity;
   float4 _skyTint;
   float _starAerosolScatterMultiplier;
   float _multipleScatteringMultiplier;
-  float _limbDarkening;  /* TODO: make this per celestial body. */
   float _ditherAmount;
+
+  /* Celestial bodies. */
+  /* Body 1. */
+  float _body1LimbDarkening;
+  bool _body1ReceivesLight;
+  TEXTURECUBE(_body1AlbedoTexture);
+  bool _body1HasAlbedoTexture;
+  bool _body1Emissive;
+  TEXTURECUBE(_body1EmissionTexture);
+  bool _body1HasEmissionTexture;
+  /* Body 2. */
+  float _body2LimbDarkening;
+  bool _body2ReceivesLight;
+  TEXTURECUBE(_body2AlbedoTexture);
+  bool _body2HasAlbedoTexture;
+  bool _body2Emissive;
+  TEXTURECUBE(_body2EmissionTexture);
+  bool _body2HasEmissionTexture;
+  /* Body 3. */
+  float _body3LimbDarkening;
+  bool _body3ReceivesLight;
+  TEXTURECUBE(_body3AlbedoTexture);
+  bool _body3HasAlbedoTexture;
+  bool _body3Emissive;
+  TEXTURECUBE(_body3EmissionTexture);
+  bool _body3HasEmissionTexture;
+  /* Body 4. */
+  float _body4LimbDarkening;
+  bool _body4ReceivesLight;
+  TEXTURECUBE(_body4AlbedoTexture);
+  bool _body4HasAlbedoTexture;
+  bool _body4Emissive;
+  TEXTURECUBE(_body4EmissionTexture);
+  bool _body4HasEmissionTexture;
+
+  /* HACK: We only allow 4 celestial bodies now. */
+  #define MAX_DIRECTIONAL_LIGHTS 4
 
   float3   _WorldSpaceCameraPos1;
   float4x4 _ViewMatrix1;
@@ -82,7 +128,7 @@ Shader "HDRP/Sky/ExpanseSky"
     return zenithIlluminance / solidAngle;
   }
 
-  float limbDarkening(float LdotV, float cosInner, float amount) {
+  float3 limbDarkening(float LdotV, float cosInner, float amount) {
     /* amount = max(FLT_EPS, amount); */
     float centerToEdge = 1.0 - abs((LdotV - cosInner) / (1.0 - cosInner));
     float mu = safeSqrt(1.0 - centerToEdge * centerToEdge);
@@ -99,11 +145,28 @@ Shader "HDRP/Sky/ExpanseSky"
     return max(0.0, pow(a0 + a1 * mu + a2 * mu2 + a3 * mu3 + a4 * mu4 + a5 * mu5, amount));
   }
 
-  float3 RenderSky(Varyings i, float exposure, float3 jitter)
+  float3 RenderSky(Varyings input, float exposure, float3 jitter)
   {
+    /* Define arrays to make things easier to write. */
+
+    float celestialBodyLimbDarkening[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1LimbDarkening, _body2LimbDarkening, _body3LimbDarkening, _body4LimbDarkening};
+    bool celestialBodyReceivesLight[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1ReceivesLight, _body2ReceivesLight, _body3ReceivesLight, _body4ReceivesLight};
+    TextureCube celestialBodyAlbedoTexture[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1AlbedoTexture, _body2AlbedoTexture, _body3AlbedoTexture, _body4AlbedoTexture};
+    bool celestialBodyHasAlbedoTexture[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1HasAlbedoTexture, _body2HasAlbedoTexture, _body3HasAlbedoTexture, _body4HasAlbedoTexture};
+    bool celestialBodyEmissive[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1Emissive, _body2Emissive, _body3Emissive, _body4Emissive};
+    TextureCube celestialBodyEmissionTexture[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1EmissionTexture, _body2EmissionTexture, _body3EmissionTexture, _body4EmissionTexture};
+    bool celestialBodyHasEmissionTexture[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1HasEmissionTexture, _body2HasEmissionTexture, _body3HasEmissionTexture, _body4HasEmissionTexture};
+
     /* Get the origin point and sample direction. */
     float3 O = _WorldSpaceCameraPos1 - float3(0, -_planetRadius, 0);
-    float3 d = normalize(-GetSkyViewDirWS(i.positionCS.xy) + jitter);
+    float3 d = normalize(-GetSkyViewDirWS(input.positionCS.xy) + jitter);
 
     /* Trace a ray to see what we hit. */
     IntersectionData intersection = traceRay(O, d, _planetRadius,
@@ -116,77 +179,134 @@ Shader "HDRP/Sky/ExpanseSky"
     /* Loop through lights and accumulate direct illumination. */
     float3 L0 = float3(0, 0, 0);
     bool celestialBodyHit = false;
-    /* Put the loop inside the conditional so we only have to evaluate once. */
     if (intersection.groundHit) {
-      for (int i = 0; i < min(4, _DirectionalLightCount); i++) {
+      /* Accumulate direct lighting. TODO: this will terminate early if
+       * we encounter lights that don't affect the physical sky. */
+      for (int i = 0; i < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); i++) {
         DirectionalLightData light = _DirectionalLightDatas[i];
-        float3 L = -normalize(light.forward.xyz);
-        float3 lightColor = light.color;
-        float cos_hit_l = dot(normalize(endPoint), L);
-        float2 groundIrradianceUV = mapGroundIrradianceCoordinates(cos_hit_l);
-        /* Direct lighting. */
-        float3 albedoTexture = SAMPLE_TEXTURECUBE_LOD(_groundColorTexture,
-          sampler_Cubemap, normalize(endPoint), 0).rgb;
-        float3 emissiveTexture = SAMPLE_TEXTURECUBE_LOD(_groundEmissiveTexture,
-          sampler_Cubemap, normalize(endPoint), 0).rgb;
-        L0 += 2.0 * _groundTintF3 * albedoTexture * lightColor * (1.0 / PI) * saturate(cos_hit_l);
-        /* Ground irradiance lighting. */
-        float3 groundIrradianceAir =
-          SAMPLE_TEXTURE2D(_GroundIrradianceTableAir,
-          s_linear_clamp_sampler, groundIrradianceUV);
-        float3 groundIrradianceAerosol =
-          SAMPLE_TEXTURE2D(_GroundIrradianceTableAerosol,
-          s_linear_clamp_sampler, groundIrradianceUV);
-        L0 += _groundTintF3 * lightColor
-          * (_skyTintF3 * 2.0 * groundIrradianceAir
-            + groundIrradianceAerosol);
-        L0 += emissiveTexture * _groundEmissiveMultiplier;
+        /* This lets us know if the light affects the physical sky. */
+        if (asint(light.distanceFromCamera) >= 0) {
+          /* Get the light direction and color. */
+          float3 L = -normalize(light.forward.xyz);
+          float3 lightColor = light.color;
+
+          /* Get the ground emission and add it to the direct light. */
+          float3 groundEmission = float3(0, 0, 0);
+          if (_hasGroundEmissionTexture) {
+            groundEmission = _groundEmissionMultiplier
+              * SAMPLE_TEXTURECUBE_LOD(_groundEmissionTexture,
+                sampler_Cubemap, normalize(endPoint), 0).rgb;
+          }
+          L0 += groundEmission;
+
+          /* Get the ground albedo. Use the ground texture if we have it. */
+          float3 groundAlbedo = 2.0 * _groundTintF3;
+          if (_hasGroundAlbedoTexture) {
+            groundAlbedo *= SAMPLE_TEXTURECUBE_LOD(_groundAlbedoTexture,
+              sampler_Cubemap, normalize(endPoint), 0).rgb;
+          }
+
+          /* Compute direct lighting. */
+          float cos_hit_l = dot(normalize(endPoint), L);
+          L0 += groundAlbedo * lightColor * (1.0 / PI) * saturate(cos_hit_l);
+
+          /* Compute ground irradiance lighting. */
+          float2 groundIrradianceUV = mapGroundIrradianceCoordinates(cos_hit_l);
+          float3 groundIrradianceAir =
+            SAMPLE_TEXTURE2D(_GroundIrradianceTableAir,
+            s_linear_clamp_sampler, groundIrradianceUV).rgb;
+          float3 groundIrradianceAerosol =
+            SAMPLE_TEXTURE2D(_GroundIrradianceTableAerosol,
+            s_linear_clamp_sampler, groundIrradianceUV).rgb;
+          L0 += _groundTintF3 * lightColor
+            * (_skyTintF3 * 2.0 * groundIrradianceAir
+              + groundIrradianceAerosol);
+        }
       }
     } else {
-      for (int i = 0; i < _DirectionalLightCount; i++) {
+      /* Check to see if we've hit a light. TODO: this will terminate early
+       * if we run into lights that don't effect physical sky. TODO:
+       * this doesn't work for eclipses. For eclipses, we need to only shade
+       * the minimum distance light. Easy enough. */
+      for (int i = 0; i < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); i++) {
         DirectionalLightData light = _DirectionalLightDatas[i];
-        float3 L = -normalize(light.forward.xyz);
-        float LdotV    = dot(L, d);
-        float radInner = 0.5 * light.angularDiameter;
-        float cosInner = cos(radInner);
-        //float cosOuter = cos(radInner + light.flareSize);
-        float3 lightColor = light.color;
-        float3 luminance = computeCelestialBodyLuminance(lightColor, cosInner);
-        if (LdotV >= cosInner && i == 0) {
-          celestialBodyHit = true;
-          L0 += luminance * limbDarkening(LdotV, cosInner, _limbDarkening)
-            * light.surfaceTint.rgb;
-        }
-        if (i > 0) {
-          /* Light this like a moon. */
-          /* The sun: */
-          DirectionalLightData sun = _DirectionalLightDatas[0];
-          float3 sunDir = -normalize(sun.forward.xyz);
-
-          /* Moon properties. */
-          float moonDist = 384400000;
-          float moonRadius = radInner * moonDist;
-          float3 moonOriginInMoonFrame = float3(0, 0, 0);
-          float3 planetOriginInMoonFrame = float3(0, 0, 0) - (L * moonDist);
-
-          /* Intersect the moon at the point we're looking at. */
-          float3 moonIntersection = intersectSphere(planetOriginInMoonFrame, d, moonRadius);
-          if (moonIntersection.z > 0) {
+        /* This lets us know if the light affects the physical sky. For some
+         * reason, its sign is flipped. */
+        if (asint(light.distanceFromCamera) >= 0) {
+          float3 L = -normalize(light.forward.xyz);
+          float LdotV    = dot(L, d);
+          float radInner = 0.5 * light.angularDiameter;
+          float cosInner = cos(radInner);
+          float cosOuter = cos(radInner + light.flareSize);
+          if (LdotV >= cosInner) {
+            /* We can see the light. */
             celestialBodyHit = true;
-            float3 moonIntersectionPoint = planetOriginInMoonFrame + minNonNegative(moonIntersection.x, moonIntersection.y) * d;
-            float3 surfaceNormal = normalize(moonIntersectionPoint - moonOriginInMoonFrame);
+            /* We take the approach of allowing a celestial body to be
+             * emissive and to receive light. This is useful for portraying
+             * something like city lights on a moon. */
+            if (celestialBodyEmissive[i]) {
+              float3 emission = computeCelestialBodyLuminance(light.color, cosInner);
+              /* Apply limb darkening. */
+              emission *= limbDarkening(LdotV, cosInner, celestialBodyLimbDarkening[i]);
+              /* Apply surface tint. */
+              emission *= light.surfaceTint.rgb;
+              /* Apply emission texture if we have one. */
+              if (celestialBodyHasEmissionTexture[i]) {
+                /* We have to do some work to compute the intersection. */
+                float bodyRadius = 2.0 * safeSqrt(1.0 - cosInner * cosInner) * light.distanceFromCamera;
+                float3 planetOriginInBodyFrame = -(L * light.distanceFromCamera);
+                /* Intersect the body at the point we're looking at. */
+                float3 bodyIntersection =
+                intersectSphere(planetOriginInBodyFrame, d, bodyRadius);
+                float3 bodyIntersectionPoint = planetOriginInBodyFrame
+                  + minNonNegative(bodyIntersection.x, bodyIntersection.y) * d;
+                float3 surfaceNormal = normalize(bodyIntersectionPoint);
 
+                emission *=
+                  SAMPLE_TEXTURECUBE_LOD(celestialBodyEmissionTexture[i],
+                  sampler_Cubemap, surfaceNormal, 0).rgb;
+              }
+              L0 += emission;
+            }
+            if (celestialBodyReceivesLight[i]) {
+              /* We have to do some work to compute the surface normal. */
+              float bodyDist = light.distanceFromCamera;
+              float bodyRadius = safeSqrt(1.0 - cosInner * cosInner) * bodyDist;
+              float3 planetOriginInBodyFrame = -(L * bodyDist);
+              float3 bodyIntersection = intersectSphere(planetOriginInBodyFrame, d, bodyRadius);
+              float3 bodyIntersectionPoint = planetOriginInBodyFrame + minNonNegative(bodyIntersection.x, bodyIntersection.y) * d;
+              float3 bodySurfaceNormal = normalize(bodyIntersectionPoint);
 
-            float3 moonColor = SAMPLE_TEXTURECUBE_LOD(_groundEmissiveTexture,
-              sampler_Cubemap, surfaceNormal, 0).rgb;
+              float3 bodyAlbedo = 2.0 * light.surfaceTint.rgb;
+              /* if (celestialBodyHasAlbedoTexture[i]) { */
+                bodyAlbedo *= SAMPLE_TEXTURECUBE_LOD(celestialBodyAlbedoTexture[i],
+                  sampler_Cubemap, bodySurfaceNormal, 0).rgb;
+              /* } */
+              bodyAlbedo *= 1.0/PI;
 
-            L0 += saturate(dot(sunDir, surfaceNormal)) * sun.color * (0.75/PI) * moonColor;
+              for (int j = 0; j < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); j++) {
+                DirectionalLightData emissiveLight = _DirectionalLightDatas[j];
+                /* Body can't light itself. */
+                if (j != i && asint(emissiveLight.distanceFromCamera) >= 0) {
+                  /* Since both bodies may be pretty far away, we can't just
+                   * use the emissive body's direction. We have to take
+                   * the difference in body positions. */
+
+                  float3 emissivePosition = emissiveLight.distanceFromCamera
+                    * -normalize(emissiveLight.forward.xyz);
+                  float3 bodyPosition = L * bodyDist;
+                  float3 emissiveDir = normalize(emissivePosition - bodyPosition);
+                  L0 += saturate(dot(emissiveDir, bodySurfaceNormal))
+                    * emissiveLight.color * bodyAlbedo;
+                }
+              }
+            }
           }
         }
       }
       /* Add the stars. */
       if (!celestialBodyHit) {
-        float3 starTexture = SAMPLE_TEXTURECUBE_LOD(_nightSkyHDRI,
+        float3 starTexture = SAMPLE_TEXTURECUBE_LOD(_nightSkyTexture,
           sampler_Cubemap, d, 0).rgb;
         L0 += starTexture * _nightTintF3 * _nightIntensity;
       }

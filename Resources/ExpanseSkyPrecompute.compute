@@ -94,6 +94,10 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
     _TransmittanceTableRW[id.xy] = T;
 }
 
+/* TODO: lots of places we use startPoint instead of O. But the tables
+ * are all only defined for origin points within the atmo, so O will
+ * always be valid and we don't ever need to calculate startPoint. */
+
 [numthreads(4,4,4)]
 void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 {
@@ -299,12 +303,11 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
   float3 L = float3(safeSqrt(1 - mu_l * mu_l), mu_l, 0);
 
   /* Sample a bunch of directions, uniformly distributed on a sphere. */
-  int numberOfMultipleScatteringSamples = 64;
   float3 secondOrder = float3(0, 0, 0);
   float3 transferFunction = float3(0, 0, 0);
-  for (int i = 0; i < numberOfMultipleScatteringSamples; i++) {
+  for (int i = 0; i < _numberOfMultipleScatteringSamples; i++) {
     /* Get the sample direction. */
-    float3 d = fibonacciSphere(i, numberOfMultipleScatteringSamples);
+    float3 d = fibonacciSphere(i, _numberOfMultipleScatteringSamples);
 
     /* Trace a ray to see what we hit. */
     IntersectionData intersection = traceRay(O, d, _planetRadius,
@@ -362,8 +365,8 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
   }
   /* Multiply by the isotropic phase function 1/4pi and divide by the number
    * of samples we took. */
-  secondOrder /= 4.0 * PI * float(numberOfMultipleScatteringSamples);
-  transferFunction /= 4.0 * PI * float(numberOfMultipleScatteringSamples);
+  secondOrder /= 4.0 * PI * float(_numberOfMultipleScatteringSamples);
+  transferFunction /= 4.0 * PI * float(_numberOfMultipleScatteringSamples);
   transferFunction = 1.0 / (1.0 - transferFunction);
 
   _LocalMultipleScatteringTableRW[id.xy] = secondOrder * transferFunction;
@@ -408,7 +411,7 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 
   float3 multipleScatteringAir = float3(0.0, 0.0, 0.0);
   float3 multipleScatteringAerosol = float3(0.0, 0.0, 0.0);
-  for (int i = 0; i < _numberOfScatteringSamples; i++) {
+  for (int i = 0; i < _numberOfMultipleScatteringAccumulationSamples; i++) {
     float sampleT = 0.0;
     float ds = 0.0;
     if (_useImportanceSampling) {
@@ -419,12 +422,12 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
        * for the secondary sampling. We could theoretically compute a
        * second sample point here exclusively for the ozone, but that
        * seems inefficient. */
-      float2 t_ds = t_hit * generateCubicSampleFromIndex(i, _numberOfScatteringSamples);
+      float2 t_ds = t_hit * generateCubicSampleFromIndex(i, _numberOfMultipleScatteringAccumulationSamples);
       sampleT = t_ds.x;
       ds = t_ds.y;
     } else {
       /* Distribute linearly. */
-      float2 t_ds = t_hit * generateLinearSampleFromIndex(i, _numberOfScatteringSamples);
+      float2 t_ds = t_hit * generateLinearSampleFromIndex(i, _numberOfMultipleScatteringAccumulationSamples);
       sampleT = t_ds.x;
       ds = t_ds.y;
     }
@@ -433,7 +436,6 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 
     float r_sample = length(samplePoint);
     float mu_l_sample = dot(normalize(samplePoint), L);
-    /* TODO: change this to mapLocalMultipleScatteringCoordinates. */
     float2 msUV = mapLocalMultipleScatteringCoordinates(r_sample, mu_l_sample,
       _atmosphereRadius, _planetRadius);
     float3 msContrib = SAMPLE_TEXTURE2D_LOD(_LocalMultipleScatteringTable,
