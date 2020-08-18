@@ -34,6 +34,7 @@ float _ozoneThickness;
 float _ozoneHeight;
 float _ozoneDensity;
 int _numberOfTransmittanceSamples;
+int _numberOfLightPollutionSamples;
 int _numberOfScatteringSamples;
 int _numberOfGroundIrradianceSamples;
 int _numberOfMultipleScatteringSamples;

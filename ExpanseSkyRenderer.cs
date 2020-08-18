@@ -42,6 +42,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _multipleScatteringMultiplierID = Shader.PropertyToID("_multipleScatteringMultiplier");
     public static readonly int _limbDarkeningID = Shader.PropertyToID("_limbDarkening");
     public static readonly int _numberOfTransmittanceSamplesID = Shader.PropertyToID("_numberOfTransmittanceSamples");
+    public static readonly int _numberOfLightPollutionSamplesID = Shader.PropertyToID("_numberOfLightPollutionSamples");
     public static readonly int _numberOfScatteringSamplesID = Shader.PropertyToID("_numberOfScatteringSamples");
     public static readonly int _numberOfGroundIrradianceSamplesID = Shader.PropertyToID("_numberOfGroundIrradianceSamples");
     public static readonly int _numberOfMultipleScatteringSamplesID = Shader.PropertyToID("_numberOfMultipleScatteringSamples");
@@ -402,6 +403,7 @@ class ExpanseSkyRenderer : SkyRenderer
 
         /* Sampling. */
         cmd.SetGlobalInt(_numberOfTransmittanceSamplesID, expanseSky.numberOfTransmittanceSamples.value);
+        cmd.SetGlobalInt(_numberOfLightPollutionSamplesID, expanseSky.numberOfLightPollutionSamples.value);
         cmd.SetGlobalInt(_numberOfScatteringSamplesID, expanseSky.numberOfScatteringSamples.value);
         cmd.SetGlobalInt(_numberOfGroundIrradianceSamplesID, expanseSky.numberOfGroundIrradianceSamples.value);
         cmd.SetGlobalInt(_numberOfMultipleScatteringSamplesID, expanseSky.numberOfMultipleScatteringSamples.value);

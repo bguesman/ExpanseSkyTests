@@ -175,6 +175,9 @@ public class ExpanseSky : SkySettings
   [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
   public ClampedIntParameter numberOfTransmittanceSamples = new ClampedIntParameter(10, 1, 256);
 
+  [Tooltip("Specify the number of samples to use when sampling along the secondary ray to compute light pollution.")]
+  public ClampedIntParameter numberOfLightPollutionSamples = new ClampedIntParameter(10, 1, 256);
+
   [Tooltip("Specify the number of samples to use when sampling along the secondary ray in the single scattering computation.")]
   public ClampedIntParameter numberOfScatteringSamples = new ClampedIntParameter(10, 1, 256);
 
@@ -281,6 +284,7 @@ public class ExpanseSky : SkySettings
 
       /* Sampling. */
       hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfLightPollutionSamples.value.GetHashCode();
       hash = hash * 23 + numberOfScatteringSamples.value.GetHashCode();
       hash = hash * 23 + numberOfGroundIrradianceSamples.value.GetHashCode();
       hash = hash * 23 + numberOfMultipleScatteringSamples.value.GetHashCode();
@@ -315,6 +319,7 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + ozoneHeight.value.GetHashCode();
       hash = hash * 23 + ozoneDensity.value.GetHashCode();
       hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
+      hash = hash * 23 + numberOfLightPollutionSamples.value.GetHashCode();
       hash = hash * 23 + numberOfScatteringSamples.value.GetHashCode();
       hash = hash * 23 + numberOfGroundIrradianceSamples.value.GetHashCode();
       hash = hash * 23 + numberOfMultipleScatteringSamples.value.GetHashCode();
