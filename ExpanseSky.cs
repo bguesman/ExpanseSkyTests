@@ -39,9 +39,21 @@ public class ExpanseSky : SkySettings
   [Tooltip("Specify a multiplier on the ground emission texture.")]
   public ClampedFloatParameter groundEmissionMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 100000.0f);
 
+  [Tooltip("Specify a color to tint to the light pollution.")]
+  public ColorParameter lightPollutionTint = new ColorParameter(Color.white, hdr: false, showAlpha: false, showEyeDropper: true);
+
+  [Tooltip("Specify a multiplier on the ground emission texture.")]
+  public ClampedFloatParameter lightPollutionIntensity = new ClampedFloatParameter(0.0f, 0.0f, 10000.0f);
+
+  [Tooltip("Specify the rotation of the planet textures as euler angles. This won't do anything to light directions, star rotations, etc. It is purely for rotating the planet's albedo and emissive textures.")]
+  public Vector3Parameter planetRotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
+
   /* Night Sky Parameters. */
   [Tooltip("Specify the cubemap HDRP uses to render the sky.")]
   public CubemapParameter nightSkyTexture = new CubemapParameter(null);
+
+  [Tooltip("Specify the rotation of the night sky as euler angles.")]
+  public Vector3Parameter nightSkyRotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   [Tooltip("Specify a color to tint the night sky HDRI.")]
   public ColorParameter nightTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
@@ -111,6 +123,8 @@ public class ExpanseSky : SkySettings
   public BoolParameter body1Emissive = new BoolParameter(true);
   [Tooltip("Specifies texture for surface albedo of celestial body #1.")]
   public CubemapParameter body1EmissionTexture = new CubemapParameter(null);
+  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #1.")]
+  public Vector3Parameter body1Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
   + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
@@ -124,6 +138,8 @@ public class ExpanseSky : SkySettings
   public BoolParameter body2Emissive = new BoolParameter(true);
   [Tooltip("Specifies texture for surface albedo of celestial body #2.")]
   public CubemapParameter body2EmissionTexture = new CubemapParameter(null);
+  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #2.")]
+  public Vector3Parameter body2Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
   + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
@@ -137,6 +153,8 @@ public class ExpanseSky : SkySettings
   public BoolParameter body3Emissive = new BoolParameter(true);
   [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
   public CubemapParameter body3EmissionTexture = new CubemapParameter(null);
+  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #2.")]
+  public Vector3Parameter body3Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
   + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
@@ -150,6 +168,8 @@ public class ExpanseSky : SkySettings
   public BoolParameter body4Emissive = new BoolParameter(true);
   [Tooltip("Specifies texture for surface albedo of celestial body #4.")]
   public CubemapParameter body4EmissionTexture = new CubemapParameter(null);
+  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #2.")]
+  public Vector3Parameter body4Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   /* Sampling. */
   [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
@@ -199,9 +219,13 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + groundTint.value.GetHashCode();
       hash = groundEmissionTexture.value != null ? hash * 23 + groundEmissionTexture.GetHashCode() : hash;
       hash = hash * 23 + groundEmissionMultiplier.value.GetHashCode();
+      hash = hash * 23 + lightPollutionTint.value.GetHashCode();
+      hash = hash * 23 + lightPollutionIntensity.value.GetHashCode();
+      hash = hash * 23 + planetRotation.value.GetHashCode();
 
       /* Night sky. */
       hash = nightSkyTexture.value != null ? hash * 23 + nightSkyTexture.GetHashCode() : hash;
+      hash = hash * 23 + nightSkyRotation.value.GetHashCode();
       hash = hash * 23 + nightTint.value.GetHashCode();
       hash = hash * 23 + nightIntensity.value.GetHashCode();
 
@@ -232,24 +256,28 @@ public class ExpanseSky : SkySettings
       hash = body1AlbedoTexture.value != null ? hash * 23 + body1AlbedoTexture.GetHashCode() : hash;
       hash = hash * 23 + body1Emissive.value.GetHashCode();
       hash = body1EmissionTexture.value != null ? hash * 23 + body1EmissionTexture.GetHashCode() : hash;
+      hash = hash * 23 + body1Rotation.value.GetHashCode();
 
       hash = hash * 23 + body2LimbDarkening.value.GetHashCode();
       hash = hash * 23 + body2ReceivesLight.value.GetHashCode();
       hash = body2AlbedoTexture.value != null ? hash * 23 + body2AlbedoTexture.GetHashCode() : hash;
       hash = hash * 23 + body2Emissive.value.GetHashCode();
       hash = body2EmissionTexture.value != null ? hash * 23 + body2EmissionTexture.GetHashCode() : hash;
+      hash = hash * 23 + body2Rotation.value.GetHashCode();
 
       hash = hash * 23 + body3LimbDarkening.value.GetHashCode();
       hash = hash * 23 + body3ReceivesLight.value.GetHashCode();
       hash = body3AlbedoTexture.value != null ? hash * 23 + body3AlbedoTexture.GetHashCode() : hash;
       hash = hash * 23 + body3Emissive.value.GetHashCode();
       hash = body3EmissionTexture.value != null ? hash * 23 + body3EmissionTexture.GetHashCode() : hash;
+      hash = hash * 23 + body3Rotation.value.GetHashCode();
 
       hash = hash * 23 + body4LimbDarkening.value.GetHashCode();
       hash = hash * 23 + body4ReceivesLight.value.GetHashCode();
       hash = body4AlbedoTexture.value != null ? hash * 23 + body4AlbedoTexture.GetHashCode() : hash;
       hash = hash * 23 + body4Emissive.value.GetHashCode();
       hash = body4EmissionTexture.value != null ? hash * 23 + body4EmissionTexture.GetHashCode() : hash;
+      hash = hash * 23 + body4Rotation.value.GetHashCode();
 
       /* Sampling. */
       hash = hash * 23 + numberOfTransmittanceSamples.value.GetHashCode();
@@ -270,7 +298,11 @@ public class ExpanseSky : SkySettings
     {
       hash = hash * 23 + atmosphereThickness.value.GetHashCode();
       hash = hash * 23 + planetRadius.value.GetHashCode();
+      hash = groundAlbedoTexture.value != null ? hash * 23 + groundAlbedoTexture.GetHashCode() : hash;
       hash = hash * 23 + groundTint.value.GetHashCode();
+      hash = hash * 23 + lightPollutionTint.value.GetHashCode();
+      hash = hash * 23 + lightPollutionIntensity.value.GetHashCode();
+      hash = hash * 23 + planetRotation.value.GetHashCode();
       hash = hash * 23 + aerosolCoefficient.value.GetHashCode();
       hash = hash * 23 + scaleHeightAerosols.value.GetHashCode();
       hash = hash * 23 + aerosolAnisotropy.value.GetHashCode();

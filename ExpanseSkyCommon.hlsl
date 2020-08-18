@@ -14,6 +14,14 @@ float _atmosphereThickness;
 float _planetRadius;
 float _atmosphereRadius;
 float4 _groundTint;
+TEXTURECUBE(_groundAlbedoTexture);
+bool _hasGroundAlbedoTexture;
+TEXTURECUBE(_groundEmissionTexture);
+bool _hasGroundEmissionTexture;
+float _groundEmissionMultiplier;
+float4 _lightPollutionTint;
+float _lightPollutionIntensity;
+float4x4 _planetRotation;
 float _aerosolCoefficient;
 float _scaleHeightAerosols;
 float _aerosolAnisotropy;
@@ -40,6 +48,7 @@ bool _useImportanceSampling;
 #define _airCoefficientsF3 _airCoefficients.xyz
 #define _ozoneCoefficientsF3 _ozoneCoefficients.xyz
 #define _groundTintF3 _groundTint.xyz
+#define _lightPollutionTintF3 _lightPollutionTint.xyz
 
 /* Set up a sampler for the cubemaps. */
 SAMPLER(sampler_Cubemap);

@@ -18,9 +18,13 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _groundTintID = Shader.PropertyToID("_groundTint");
     public static readonly int _groundEmissionTextureID = Shader.PropertyToID("_groundEmissionTexture");
     public static readonly int _hasGroundEmissionTextureID = Shader.PropertyToID("_hasGroundEmissionTexture");
+    public static readonly int _lightPollutionTintID = Shader.PropertyToID("_lightPollutionTint");
+    public static readonly int _lightPollutionIntensityID = Shader.PropertyToID("_lightPollutionIntensity");
+    public static readonly int _planetRotationID = Shader.PropertyToID("_planetRotation");
     public static readonly int _groundEmissionMultiplierID = Shader.PropertyToID("_groundEmissionMultiplier");
     public static readonly int _nightSkyTextureID = Shader.PropertyToID("_nightSkyTexture");
     public static readonly int _hasNightSkyTextureID = Shader.PropertyToID("_hasNightSkyTexture");
+    public static readonly int _nightSkyRotationID = Shader.PropertyToID("_nightSkyRotation");
     public static readonly int _nightTintID = Shader.PropertyToID("_nightTint");
     public static readonly int _nightIntensityID = Shader.PropertyToID("_nightIntensity");
     public static readonly int _aerosolCoefficientID = Shader.PropertyToID("_aerosolCoefficient");
@@ -54,6 +58,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _body1EmissiveID = Shader.PropertyToID("_body1Emissive");
     public static readonly int _body1EmissionTextureID = Shader.PropertyToID("_body1EmissionTexture");
     public static readonly int _body1HasEmissionTextureID = Shader.PropertyToID("_body1HasEmissionTexture");
+    public static readonly int _body1RotationID = Shader.PropertyToID("_body1Rotation");
     /* Body 2. */
     public static readonly int _body2LimbDarkeningID = Shader.PropertyToID("_body2LimbDarkening");
     public static readonly int _body2ReceivesLightID = Shader.PropertyToID("_body2ReceivesLight");
@@ -62,6 +67,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _body2EmissiveID = Shader.PropertyToID("_body2Emissive");
     public static readonly int _body2EmissionTextureID = Shader.PropertyToID("_body2EmissionTexture");
     public static readonly int _body2HasEmissionTextureID = Shader.PropertyToID("_body2HasEmissionTexture");
+    public static readonly int _body2RotationID = Shader.PropertyToID("_body2Rotation");
     /* Body 3. */
     public static readonly int _body3LimbDarkeningID = Shader.PropertyToID("_body3LimbDarkening");
     public static readonly int _body3ReceivesLightID = Shader.PropertyToID("_body3ReceivesLight");
@@ -70,6 +76,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _body3EmissiveID = Shader.PropertyToID("_body3Emissive");
     public static readonly int _body3EmissionTextureID = Shader.PropertyToID("_body3EmissionTexture");
     public static readonly int _body3HasEmissionTextureID = Shader.PropertyToID("_body3HasEmissionTexture");
+    public static readonly int _body3RotationID = Shader.PropertyToID("_body3Rotation");
     /* Body 4. */
     public static readonly int _body4LimbDarkeningID = Shader.PropertyToID("_body4LimbDarkening");
     public static readonly int _body4ReceivesLightID = Shader.PropertyToID("_body4ReceivesLight");
@@ -78,6 +85,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _body4EmissiveID = Shader.PropertyToID("_body4Emissive");
     public static readonly int _body4EmissionTextureID = Shader.PropertyToID("_body4EmissionTexture");
     public static readonly int _body4HasEmissionTextureID = Shader.PropertyToID("_body4HasEmissionTexture");
+    public static readonly int _body4RotationID = Shader.PropertyToID("_body4Rotation");
 
     public static readonly int _WorldSpaceCameraPos1ID = Shader.PropertyToID("_WorldSpaceCameraPos1");
     public static readonly int _ViewMatrix1ID = Shader.PropertyToID("_ViewMatrix1");
@@ -329,6 +337,17 @@ class ExpanseSkyRenderer : SkyRenderer
         cmd.SetGlobalFloat(_planetRadiusID, expanseSky.planetRadius.value);
         cmd.SetGlobalFloat(_atmosphereRadiusID, expanseSky.atmosphereThickness.value + expanseSky.planetRadius.value);
         cmd.SetGlobalVector(_groundTintID, expanseSky.groundTint.value);
+        if (expanseSky.groundAlbedoTexture.value != null) {
+          cmd.SetGlobalTexture(_groundAlbedoTextureID, expanseSky.groundAlbedoTexture.value);
+        }
+        cmd.SetGlobalFloat(_hasGroundAlbedoTextureID, (expanseSky.groundAlbedoTexture.value == null) ? 0f : 1f);
+        cmd.SetGlobalVector(_lightPollutionTintID, expanseSky.lightPollutionTint.value);
+        cmd.SetGlobalFloat(_lightPollutionIntensityID, expanseSky.lightPollutionIntensity.value);
+
+        Quaternion planetRotation = Quaternion.Euler(expanseSky.planetRotation.value.x,
+                                                     expanseSky.planetRotation.value.y,
+                                                     expanseSky.planetRotation.value.z);
+        cmd.SetGlobalMatrix(_planetRotationID, Matrix4x4.Rotate(planetRotation));
 
         /* Aerosols. */
         cmd.SetGlobalFloat(_aerosolCoefficientID, expanseSky.aerosolCoefficient.value);
@@ -476,10 +495,10 @@ class ExpanseSkyRenderer : SkyRenderer
             int passID = renderForCubemap ? m_RenderCubemapID : m_RenderFullscreenSkyID;
 
             /* Set the shader uniform variables. */
-            if (expanseSky.groundAlbedoTexture.value != null) {
-              m_PropertyBlock.SetTexture(_groundAlbedoTextureID, expanseSky.groundAlbedoTexture.value);
+            if (expanseSky.nightSkyTexture.value != null) {
+              m_PropertyBlock.SetTexture(_nightSkyTextureID, expanseSky.nightSkyTexture.value);
             }
-            m_PropertyBlock.SetFloat(_hasGroundAlbedoTextureID, (expanseSky.groundAlbedoTexture.value == null) ? 0f : 1f);
+            m_PropertyBlock.SetFloat(_hasNightSkyTextureID, (expanseSky.nightSkyTexture.value == null) ? 0f : 1f);
 
             if (expanseSky.groundEmissionTexture.value != null) {
               m_PropertyBlock.SetTexture(_groundEmissionTextureID, expanseSky.groundEmissionTexture.value);
@@ -488,11 +507,10 @@ class ExpanseSkyRenderer : SkyRenderer
 
             m_PropertyBlock.SetFloat(_groundEmissionMultiplierID, expanseSky.groundEmissionMultiplier.value);
 
-            if (expanseSky.nightSkyTexture.value != null) {
-              m_PropertyBlock.SetTexture(_nightSkyTextureID, expanseSky.nightSkyTexture.value);
-            }
-            m_PropertyBlock.SetFloat(_hasNightSkyTextureID, (expanseSky.nightSkyTexture.value == null) ? 0f : 1f);
-
+            Quaternion nightSkyRotation = Quaternion.Euler(expanseSky.nightSkyRotation.value.x,
+                                                         expanseSky.nightSkyRotation.value.y,
+                                                         expanseSky.nightSkyRotation.value.z);
+            m_PropertyBlock.SetMatrix(_nightSkyRotationID, Matrix4x4.Rotate(nightSkyRotation));
             m_PropertyBlock.SetVector(_nightTintID, expanseSky.nightTint.value);
             m_PropertyBlock.SetFloat(_nightIntensityID, expanseSky.nightIntensity.value);
             m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
@@ -512,6 +530,10 @@ class ExpanseSkyRenderer : SkyRenderer
               m_PropertyBlock.SetTexture(_body1EmissionTextureID, expanseSky.body1EmissionTexture.value);
             }
             m_PropertyBlock.SetFloat(_body1HasEmissionTextureID, (expanseSky.body1EmissionTexture.value == null) ? 0f : 1f);
+            Quaternion body1Rotation = Quaternion.Euler(expanseSky.body1Rotation.value.x,
+                                                         expanseSky.body1Rotation.value.y,
+                                                         expanseSky.body1Rotation.value.z);
+            m_PropertyBlock.SetMatrix(_body1RotationID, Matrix4x4.Rotate(body1Rotation));
 
             /* Body 2. */
             m_PropertyBlock.SetFloat(_body2LimbDarkeningID, expanseSky.body2LimbDarkening.value);
@@ -525,6 +547,10 @@ class ExpanseSkyRenderer : SkyRenderer
               m_PropertyBlock.SetTexture(_body2EmissionTextureID, expanseSky.body2EmissionTexture.value);
             }
             m_PropertyBlock.SetFloat(_body2HasEmissionTextureID, (expanseSky.body2EmissionTexture.value == null) ? 0f : 1f);
+            Quaternion body2Rotation = Quaternion.Euler(expanseSky.body2Rotation.value.x,
+                                                         expanseSky.body2Rotation.value.y,
+                                                         expanseSky.body2Rotation.value.z);
+            m_PropertyBlock.SetMatrix(_body2RotationID, Matrix4x4.Rotate(body2Rotation));
 
             /* Body 3. */
             m_PropertyBlock.SetFloat(_body3LimbDarkeningID, expanseSky.body3LimbDarkening.value);
@@ -538,6 +564,10 @@ class ExpanseSkyRenderer : SkyRenderer
               m_PropertyBlock.SetTexture(_body3EmissionTextureID, expanseSky.body3EmissionTexture.value);
             }
             m_PropertyBlock.SetFloat(_body3HasEmissionTextureID, (expanseSky.body3EmissionTexture.value == null) ? 0f : 1f);
+            Quaternion body3Rotation = Quaternion.Euler(expanseSky.body3Rotation.value.x,
+                                                         expanseSky.body3Rotation.value.y,
+                                                         expanseSky.body3Rotation.value.z);
+            m_PropertyBlock.SetMatrix(_body3RotationID, Matrix4x4.Rotate(body3Rotation));
 
             /* Body 4. */
             m_PropertyBlock.SetFloat(_body4LimbDarkeningID, expanseSky.body4LimbDarkening.value);
@@ -551,6 +581,10 @@ class ExpanseSkyRenderer : SkyRenderer
               m_PropertyBlock.SetTexture(_body4EmissionTextureID, expanseSky.body4EmissionTexture.value);
             }
             m_PropertyBlock.SetFloat(_body4HasEmissionTextureID, (expanseSky.body4EmissionTexture.value == null) ? 0f : 1f);
+            Quaternion body4Rotation = Quaternion.Euler(expanseSky.body4Rotation.value.x,
+                                                         expanseSky.body4Rotation.value.y,
+                                                         expanseSky.body4Rotation.value.z);
+            m_PropertyBlock.SetMatrix(_body4RotationID, Matrix4x4.Rotate(body4Rotation));
 
             m_PropertyBlock.SetVector(_WorldSpaceCameraPos1ID, builtinParams.worldSpaceCameraPos);
             m_PropertyBlock.SetMatrix(_ViewMatrix1ID, builtinParams.viewMatrix);

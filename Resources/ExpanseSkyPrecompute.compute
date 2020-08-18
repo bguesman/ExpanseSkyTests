@@ -14,6 +14,7 @@
 #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/Sampling/Sampling.hlsl"
 #include "Assets/CustomSky/ExpanseSky/code/ExpanseSkyCommon.hlsl"
 
+
 /* Transmittance table. Leverages spherical symmetry of the atmosphere,
  * parameterized by:
  * h (x dimension): the height of the camera.
@@ -219,8 +220,16 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
          * and TODO: the emissive texture.
          * TODO: something looks off about this. */
         float dot_L_sample = saturate(dot(normalize(L), normalize(lightEndPoint)));
-        inScatteringAir += scaledDensityAir * T * dot_L_sample * 2.0 *_groundTintF3;
-        inScatteringAerosol += scaledDensityAerosol * T * dot_L_sample * 2.0 *_groundTintF3;
+        float3 groundAlbedo = 2.0 * _groundTintF3;
+        /* TODO: these should be using the cubemap sampler, but for some reason
+         * it doesn't work. */
+        if (_hasGroundAlbedoTexture) {
+          groundAlbedo *= SAMPLE_TEXTURECUBE_LOD(_groundAlbedoTexture,
+            s_linear_clamp_sampler, mul(normalize(lightEndPoint), (float3x3)_planetRotation), 0).rgb;
+        }
+        groundAlbedo /= PI;
+        inScatteringAir += scaledDensityAir * T * (dot_L_sample * groundAlbedo /*+ _lightPollutionTint * _lightPollutionIntensity*/);
+        inScatteringAerosol += scaledDensityAerosol * T * (dot_L_sample * groundAlbedo /*+ _lightPollutionTint * _lightPollutionIntensity*/);
       }
     } else {
       inScatteringAir += scaledDensityAir * T;
@@ -336,7 +345,15 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
         _planetRadius, t_hit, intersection.groundHit);
       float3 groundTransmittance = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
         s_linear_clamp_sampler, groundUV, 0).rgb;
-      secondOrder += groundTransmittance * _groundTintF3 * (1.0 / PI)
+      float3 groundAlbedo = 2.0 * _groundTintF3;
+      /* TODO: these should be using the cubemap sampler, but for some reason
+       * it doesn't work. */
+      if (_hasGroundAlbedoTexture) {
+        groundAlbedo *= SAMPLE_TEXTURECUBE_LOD(_groundAlbedoTexture,
+          s_linear_clamp_sampler, mul(normalize(hitPoint), (float3x3)_planetRotation), 0).rgb;
+      }
+      groundAlbedo /= PI;
+      secondOrder += groundTransmittance * groundAlbedo
         * saturate(dot(L, normalize(hitPoint)));
     }
 

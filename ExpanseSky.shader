@@ -29,14 +29,10 @@ Shader "HDRP/Sky/ExpanseSky"
 /****************************** UNIFORM VARIABLES *******************************/
 /********************************************************************************/
 
-  TEXTURECUBE(_groundAlbedoTexture);
-  bool _hasGroundAlbedoTexture;
-  TEXTURECUBE(_groundEmissionTexture);
-  bool _hasGroundEmissionTexture;
-  float _groundEmissionMultiplier;
   TEXTURECUBE(_nightSkyTexture);
   bool _hasNightSkyTexture;
   float4 _nightTint;
+  float4x4 _nightSkyRotation;
   float _nightIntensity;
   float4 _skyTint;
   float _starAerosolScatterMultiplier;
@@ -52,6 +48,7 @@ Shader "HDRP/Sky/ExpanseSky"
   bool _body1Emissive;
   TEXTURECUBE(_body1EmissionTexture);
   bool _body1HasEmissionTexture;
+  float4x4 _body1Rotation;
   /* Body 2. */
   float _body2LimbDarkening;
   bool _body2ReceivesLight;
@@ -60,6 +57,7 @@ Shader "HDRP/Sky/ExpanseSky"
   bool _body2Emissive;
   TEXTURECUBE(_body2EmissionTexture);
   bool _body2HasEmissionTexture;
+  float4x4 _body2Rotation;
   /* Body 3. */
   float _body3LimbDarkening;
   bool _body3ReceivesLight;
@@ -68,6 +66,7 @@ Shader "HDRP/Sky/ExpanseSky"
   bool _body3Emissive;
   TEXTURECUBE(_body3EmissionTexture);
   bool _body3HasEmissionTexture;
+  float4x4 _body3Rotation;
   /* Body 4. */
   float _body4LimbDarkening;
   bool _body4ReceivesLight;
@@ -76,6 +75,7 @@ Shader "HDRP/Sky/ExpanseSky"
   bool _body4Emissive;
   TEXTURECUBE(_body4EmissionTexture);
   bool _body4HasEmissionTexture;
+  float4x4 _body4Rotation;
 
   /* HACK: We only allow 4 celestial bodies now. */
   #define MAX_DIRECTIONAL_LIGHTS 4
@@ -163,6 +163,8 @@ Shader "HDRP/Sky/ExpanseSky"
       {_body1EmissionTexture, _body2EmissionTexture, _body3EmissionTexture, _body4EmissionTexture};
     bool celestialBodyHasEmissionTexture[MAX_DIRECTIONAL_LIGHTS] =
       {_body1HasEmissionTexture, _body2HasEmissionTexture, _body3HasEmissionTexture, _body4HasEmissionTexture};
+    float4x4 celestialBodyRotations[MAX_DIRECTIONAL_LIGHTS] =
+      {_body1Rotation, _body2Rotation, _body3Rotation, _body4Rotation};
 
     /* Get the origin point and sample direction. */
     float3 O = _WorldSpaceCameraPos1 - float3(0, -_planetRadius, 0);
@@ -190,12 +192,13 @@ Shader "HDRP/Sky/ExpanseSky"
           float3 L = -normalize(light.forward.xyz);
           float3 lightColor = light.color;
 
-          /* Get the ground emission and add it to the direct light. */
+          /* Get the ground emission and add it to the direct light.
+           * HACK: don't actually use this to shade the ground. */
           float3 groundEmission = float3(0, 0, 0);
           if (_hasGroundEmissionTexture) {
             groundEmission = _groundEmissionMultiplier
               * SAMPLE_TEXTURECUBE_LOD(_groundEmissionTexture,
-                sampler_Cubemap, normalize(endPoint), 0).rgb;
+                sampler_Cubemap, mul(normalize(endPoint), (float3x3)_planetRotation), 0).rgb;
           }
           L0 += groundEmission;
 
@@ -203,7 +206,7 @@ Shader "HDRP/Sky/ExpanseSky"
           float3 groundAlbedo = 2.0 * _groundTintF3;
           if (_hasGroundAlbedoTexture) {
             groundAlbedo *= SAMPLE_TEXTURECUBE_LOD(_groundAlbedoTexture,
-              sampler_Cubemap, normalize(endPoint), 0).rgb;
+              sampler_Cubemap, mul(normalize(endPoint), (float3x3)_planetRotation), 0).rgb;
           }
 
           /* Compute direct lighting. */
@@ -264,7 +267,7 @@ Shader "HDRP/Sky/ExpanseSky"
 
                 emission *=
                   SAMPLE_TEXTURECUBE_LOD(celestialBodyEmissionTexture[i],
-                  sampler_Cubemap, surfaceNormal, 0).rgb;
+                  sampler_Cubemap, mul(surfaceNormal, (float3x3) celestialBodyRotations[i]), 0).rgb;
               }
               L0 += emission;
             }
@@ -278,10 +281,10 @@ Shader "HDRP/Sky/ExpanseSky"
               float3 bodySurfaceNormal = normalize(bodyIntersectionPoint);
 
               float3 bodyAlbedo = 2.0 * light.surfaceTint.rgb;
-              /* if (celestialBodyHasAlbedoTexture[i]) { */
+              if (celestialBodyHasAlbedoTexture[i]) {
                 bodyAlbedo *= SAMPLE_TEXTURECUBE_LOD(celestialBodyAlbedoTexture[i],
-                  sampler_Cubemap, bodySurfaceNormal, 0).rgb;
-              /* } */
+                  sampler_Cubemap, mul(bodySurfaceNormal, (float3x3) celestialBodyRotations[i]), 0).rgb;
+              }
               bodyAlbedo *= 1.0/PI;
 
               for (int j = 0; j < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); j++) {
@@ -307,7 +310,7 @@ Shader "HDRP/Sky/ExpanseSky"
       /* Add the stars. */
       if (!celestialBodyHit) {
         float3 starTexture = SAMPLE_TEXTURECUBE_LOD(_nightSkyTexture,
-          sampler_Cubemap, d, 0).rgb;
+          sampler_Cubemap, mul(d, (float3x3)_nightSkyRotation), 0).rgb;
         L0 += starTexture * _nightTintF3 * _nightIntensity;
       }
     }
@@ -330,7 +333,7 @@ Shader "HDRP/Sky/ExpanseSky"
     float3 starAerosolScattering = float3(0, 0, 0);
     if (intersection.groundHit || intersection.atmoHit) {
       int lightCount = _DirectionalLightCount;
-      for (int i = 0; i < min(4, _DirectionalLightCount); i++) {
+      for (int i = 0; i < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); i++) {
         DirectionalLightData light = _DirectionalLightDatas[i];
         float3 L = -normalize(light.forward.xyz);
         float3 lightColor = light.color;
@@ -380,13 +383,19 @@ Shader "HDRP/Sky/ExpanseSky"
           + _aerosolCoefficient * msAerosol)
           * _multipleScatteringMultiplier;
 
+        /* Consider light pollution to be isotropically scattered, so don't
+         * apply phase functions. */
+        float3 lightPollution = (_lightPollutionTint * _lightPollutionIntensity)
+        * ((finalMultipleScattering) + (0.25/PI) * (2.0 * _skyTintF3 * _airCoefficientsF3
+          * singleScatteringContributionAir
+          + _aerosolCoefficient * singleScatteringContributionAerosol));
+
         skyColor +=
-          (finalSingleScattering + finalMultipleScattering) * lightColor;
+          (finalSingleScattering + finalMultipleScattering) * lightColor + lightPollution;
       }
 
       /* HACK: to get some sort of approximation of rayleigh scattering
-       * for the ambient night color of the sky.
-       * TODO: actually compute the average color of the sky texture. */
+       * for the ambient night color of the sky. */
       TexCoord4D ssCoord_night = mapSingleScatteringCoordinates(r, mu, mu, 1.0,
         _atmosphereRadius, _planetRadius, t_hit, intersection.groundHit);
        float3 singleScatteringContributionAirNight =
@@ -408,11 +417,10 @@ Shader "HDRP/Sky/ExpanseSky"
          * _airCoefficientsF3 * msAirNight)
          * _multipleScatteringMultiplier;
 
+      /* 1.0/8.0 here is a magic number representing something the star density. */
       nightAirScattering = (finalSingleScatteringNight
         + finalMultipleScatteringNight) * _nightTintF3 * _nightIntensity/8.0;
     }
-
-
 
     float3 finalDirectLighting = (L0 * T);
 
