@@ -48,6 +48,7 @@ class ExpanseSkyRenderer : SkyRenderer
     public static readonly int _numberOfMultipleScatteringSamplesID = Shader.PropertyToID("_numberOfMultipleScatteringSamples");
     public static readonly int _numberOfMultipleScatteringAccumulationSamplesID = Shader.PropertyToID("_numberOfMultipleScatteringAccumulationSamples");
     public static readonly int _useImportanceSamplingID = Shader.PropertyToID("_useImportanceSampling");
+    public static readonly int _useAntiAliasingID = Shader.PropertyToID("_useAntiAliasing");
     public static readonly int _ditherAmountID = Shader.PropertyToID("_ditherAmount");
 
     /* Celestial bodies. */
@@ -109,66 +110,65 @@ class ExpanseSkyRenderer : SkyRenderer
     /************************** End Shader Variable ID's ****************************/
     /********************************************************************************/
 
-    /* Dimensions of precomputed tables.
-     * TODO: rename phi to mu. */
+    /* Dimensions of precomputed tables.  */
     const int TransmittanceTableSizeH = 32;
-    const int TransmittanceTableSizePhi = 128;
+    const int TransmittanceTableSizeMu = 128;
 
     const int LightPollutionTableSizeH = 32;
-    const int LightPollutionTableSizePhi = 128;
+    const int LightPollutionTableSizeMu = 128;
 
     const int SingleScatteringTableSizeH = 32;
-    const int SingleScatteringTableSizePhi = 128;
-    const int SingleScatteringTableSizePhiL = 32;
+    const int SingleScatteringTableSizeMu = 128;
+    const int SingleScatteringTableSizeMuL = 32;
     const int SingleScatteringTableSizeNu = 32;
 
     const int GroundIrradianceTableSize = 256;
 
     const int LocalMultipleScatteringTableSizeH = 32;
-    const int LocalMultipleScatteringTableSizePhiL = 32;
+    const int LocalMultipleScatteringTableSizeMuL = 32;
 
     const int GlobalMultipleScatteringTableSizeH = 32;
-    const int GlobalMultipleScatteringTableSizePhi = 128;
-    const int GlobalMultipleScatteringTableSizePhiL = 32;
+    const int GlobalMultipleScatteringTableSizeMu = 128;
+    const int GlobalMultipleScatteringTableSizeMuL = 32;
     const int GlobalMultipleScatteringTableSizeNu = 32;
 
     /* Transmittance table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
      * h (x dimension): the height of the camera.
-     * phi (y dimension): the zenith angle of the viewing direction. */
+     * mu (y dimension): the zenith angle of the viewing direction. */
     RTHandle[]                   m_TransmittanceTables;
 
     /* Light pollution table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
      * h (x dimension): the height of the camera.
-     * phi (y dimension): the zenith angle of the viewing direction. */
+     * mu (y dimension): the zenith angle of the viewing direction. */
     RTHandle[]                   m_LightPollutionTables;
 
     /* Single scattering table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
      * h (x dimension): the height of the camera.
-     * phi (y dimension): the zenith angle of the viewing direction.
-     * phi_l (z dimension): the zenith angle of the light source.
+     * mu (y dimension): the zenith angle of the viewing direction.
+     * mu_l (z dimension): the zenith angle of the light source.
      * nu (w dimension): the azimuth angle of the light source. */
     RTHandle[]                   m_SingleScatteringTables;
 
     /* Ground irradiance table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
-     * phi (x dimension): dot product between the surface normal and the
+     * mu (x dimension): dot product between the surface normal and the
      * light direction. */
     RTHandle[]                   m_GroundIrradianceTables;
 
     /* Multiple scattering table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
      * h (x dimension): the height of the camera.
-     * phi_l (y dimension): dot product between the surface normal and the
+     * mu_l (y dimension): dot product between the surface normal and the
      * light direction. */
     RTHandle[]                   m_LocalMultipleScatteringTables;
 
     /* Multiple scattering table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
      * h (x dimension): the height of the camera.
-     * phi_l (y dimension): dot product between the surface normal and the
+     * mu_l (y dimension): dot product between the surface normal and the
      * light direction. */
     RTHandle[]                   m_GlobalMultipleScatteringTables;
 
@@ -184,7 +184,7 @@ class ExpanseSkyRenderer : SkyRenderer
     RTHandle AllocateTransmittanceTable(int index)
     {
         var table = RTHandles.Alloc(TransmittanceTableSizeH,
-                                    TransmittanceTableSizePhi,
+                                    TransmittanceTableSizeMu,
                                     dimension: TextureDimension.Tex2D,
                                     colorFormat: s_ColorFormat,
                                     enableRandomWrite: true,
@@ -198,7 +198,7 @@ class ExpanseSkyRenderer : SkyRenderer
     RTHandle AllocateLightPollutionTable(int index)
     {
         var table = RTHandles.Alloc(LightPollutionTableSizeH,
-                                    LightPollutionTableSizePhi,
+                                    LightPollutionTableSizeMu,
                                     dimension: TextureDimension.Tex2D,
                                     colorFormat: s_ColorFormat,
                                     enableRandomWrite: true,
@@ -226,8 +226,8 @@ class ExpanseSkyRenderer : SkyRenderer
     RTHandle AllocateSingleScatteringTable(int index)
     {
         var table = RTHandles.Alloc(SingleScatteringTableSizeH,
-                                    SingleScatteringTableSizePhi,
-                                    SingleScatteringTableSizePhiL *
+                                    SingleScatteringTableSizeMu,
+                                    SingleScatteringTableSizeMuL *
                                     SingleScatteringTableSizeNu,
                                     dimension: TextureDimension.Tex3D,
                                     colorFormat: s_ColorFormat,
@@ -242,7 +242,7 @@ class ExpanseSkyRenderer : SkyRenderer
     RTHandle AllocateLocalMultipleScatteringTable(int index)
     {
         var table = RTHandles.Alloc(LocalMultipleScatteringTableSizeH,
-                                    LocalMultipleScatteringTableSizePhiL,
+                                    LocalMultipleScatteringTableSizeMuL,
                                     dimension: TextureDimension.Tex2D,
                                     colorFormat: s_ColorFormat,
                                     enableRandomWrite: true,
@@ -256,8 +256,8 @@ class ExpanseSkyRenderer : SkyRenderer
     RTHandle AllocateGlobalMultipleScatteringTable(int index)
     {
         var table = RTHandles.Alloc(GlobalMultipleScatteringTableSizeH,
-                                    GlobalMultipleScatteringTableSizePhi,
-                                    GlobalMultipleScatteringTableSizePhiL *
+                                    GlobalMultipleScatteringTableSizeMu,
+                                    GlobalMultipleScatteringTableSizeMuL *
                                     GlobalMultipleScatteringTableSizeNu,
                                     dimension: TextureDimension.Tex3D,
                                     colorFormat: s_ColorFormat,
@@ -482,18 +482,18 @@ class ExpanseSkyRenderer : SkyRenderer
         int transmittanceKernelHandle =
           s_PrecomputeCS.FindKernel("COMPUTE_TRANSMITTANCE");
         cmd.DispatchCompute(s_PrecomputeCS, transmittanceKernelHandle,
-          TransmittanceTableSizeH / 4, TransmittanceTableSizePhi / 4, 1);
+          TransmittanceTableSizeH / 4, TransmittanceTableSizeMu / 4, 1);
 
         int lightPollutionKernelHandle =
           s_PrecomputeCS.FindKernel("COMPUTE_LIGHT_POLLUTION");
         cmd.DispatchCompute(s_PrecomputeCS, lightPollutionKernelHandle,
-          LightPollutionTableSizeH / 4, LightPollutionTableSizePhi / 4, 1);
+          LightPollutionTableSizeH / 4, LightPollutionTableSizeMu / 4, 1);
 
         int singleScatteringKernelHandle =
           s_PrecomputeCS.FindKernel("COMPUTE_SINGLE_SCATTERING");
         cmd.DispatchCompute(s_PrecomputeCS, singleScatteringKernelHandle,
-          SingleScatteringTableSizeH / 4, SingleScatteringTableSizePhi / 4,
-          (SingleScatteringTableSizePhiL * SingleScatteringTableSizeNu) / 4);
+          SingleScatteringTableSizeH / 4, SingleScatteringTableSizeMu / 4,
+          (SingleScatteringTableSizeMuL * SingleScatteringTableSizeNu) / 4);
 
         int localMultipleScatteringKernelHandle =
           s_PrecomputeCS.FindKernel("COMPUTE_LOCAL_MULTIPLE_SCATTERING");
@@ -505,8 +505,8 @@ class ExpanseSkyRenderer : SkyRenderer
           s_PrecomputeCS.FindKernel("COMPUTE_GLOBAL_MULTIPLE_SCATTERING");
         cmd.DispatchCompute(s_PrecomputeCS, globalMultipleScatteringKernelHandle,
           GlobalMultipleScatteringTableSizeH / 4,
-          GlobalMultipleScatteringTableSizePhi / 4,
-          (GlobalMultipleScatteringTableSizePhiL * GlobalMultipleScatteringTableSizeNu) / 4);
+          GlobalMultipleScatteringTableSizeMu / 4,
+          (GlobalMultipleScatteringTableSizeMuL * GlobalMultipleScatteringTableSizeNu) / 4);
 
         int groundIrradianceKernelHandle =
           s_PrecomputeCS.FindKernel("COMPUTE_GROUND_IRRADIANCE");
@@ -536,8 +536,7 @@ class ExpanseSkyRenderer : SkyRenderer
      * instead use the celestial body system. */
     public override void RenderSky(BuiltinSkyParameters builtinParams, bool renderForCubemap, bool renderSunDisk)
     {
-        /* TODO: no idea why this using thing is here. It must be a debug
-         * type thing. Unity says it's obselete, but finding a way to
+        /* TODO: Unity says this is obselete, but finding a way to
          * profile would actually be very cool. */
         using (new ProfilingSample(builtinParams.commandBuffer, "Draw Expanse Sky"))
         {
@@ -566,6 +565,7 @@ class ExpanseSkyRenderer : SkyRenderer
             m_PropertyBlock.SetFloat(_nightIntensityID, expanseSky.nightIntensity.value);
             m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
             m_PropertyBlock.SetFloat(_multipleScatteringMultiplierID, expanseSky.multipleScatteringMultiplier.value);
+            m_PropertyBlock.SetFloat(_useAntiAliasingID, expanseSky.useAntiAliasing.value ? 1f : 0f);
             m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value);
 
             /* Celestial bodies. */

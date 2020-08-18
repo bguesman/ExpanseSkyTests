@@ -193,6 +193,9 @@ public class ExpanseSky : SkySettings
   [Tooltip("Specify whether or not to use importance sampling.")]
   public BoolParameter useImportanceSampling = new BoolParameter(true);
 
+  [Tooltip("Specify whether or not to use anti-aliasing. MSAA 8x.")]
+  public BoolParameter useAntiAliasing = new BoolParameter(true);
+
   [Tooltip("Controls amount of dithering used to reduce color banding. If this is too high, noise will be visible.")]
   public ClampedFloatParameter ditherAmount = new ClampedFloatParameter(0.05f, 0.0f, 1.0f);
 
@@ -290,6 +293,7 @@ public class ExpanseSky : SkySettings
       hash = hash * 23 + numberOfMultipleScatteringSamples.value.GetHashCode();
       hash = hash * 23 + numberOfMultipleScatteringAccumulationSamples.value.GetHashCode();
       hash = hash * 23 + useImportanceSampling.value.GetHashCode();
+      hash = hash * 23 + useAntiAliasing.value.GetHashCode();
       hash = hash * 23 + ditherAmount.value.GetHashCode();
     }
     return hash;

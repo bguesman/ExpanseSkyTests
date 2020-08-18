@@ -14,6 +14,8 @@ float _atmosphereThickness;
 float _planetRadius;
 float _atmosphereRadius;
 float4 _groundTint;
+/* TODO: currently, we don't use these textures in precomputation. But
+ * we could. */
 TEXTURECUBE(_groundAlbedoTexture);
 bool _hasGroundAlbedoTexture;
 TEXTURECUBE(_groundEmissionTexture);
@@ -59,19 +61,19 @@ SAMPLER(sampler_Cubemap);
 /* Transmittance table. Leverages spherical symmetry of the atmosphere,
  * parameterized by:
  * h (x dimension): the height of the camera.
- * phi (y dimension): the zenith angle of the viewing direction. */
+ * mu (y dimension): the zenith angle of the viewing direction. */
 TEXTURE2D(_TransmittanceTable);
 /* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
  * be great to be able to set these as constants. I don't want to make them
  * accessible because I haven't set up any way to reallocate these on the
  * fly. */
 #define TRANSMITTANCE_TABLE_SIZE_H 32
-#define TRANSMITTANCE_TABLE_SIZE_PHI 128
+#define TRANSMITTANCE_TABLE_SIZE_MU 128
 
 /* Light pollution table. Leverages spherical symmetry of the atmosphere,
  * parameterized by:
  * h (x dimension): the height of the camera.
- * phi (y dimension): the zenith angle of the viewing direction. */
+ * mu (y dimension): the zenith angle of the viewing direction. */
 TEXTURE2D(_LightPollutionTableAir);
 TEXTURE2D(_LightPollutionTableAerosol);
 /* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
@@ -79,13 +81,13 @@ TEXTURE2D(_LightPollutionTableAerosol);
  * accessible because I haven't set up any way to reallocate these on the
  * fly. */
 #define LIGHT_POLLUTION_TABLE_SIZE_H 32
-#define LIGHT_POLLUTION_TABLE_SIZE_PHI 128
+#define LIGHT_POLLUTION_TABLE_SIZE_MU 128
 
 /* Single scattering tables. Leverage spherical symmetry of the atmosphere,
  * parameterized by:
  * h (x dimension): the height of the camera.
- * phi (y dimension): the zenith angle of the viewing direction.
- * phi_l (z dimension): the zenith angle of the light source.
+ * mu (y dimension): the zenith angle of the viewing direction.
+ * mu_l (z dimension): the zenith angle of the light source.
  * nu (w dimension): the azimuth angle of the light source. */
 TEXTURE3D(_SingleScatteringTableAir);
 TEXTURE3D(_SingleScatteringTableAerosol);
@@ -96,13 +98,13 @@ TEXTURE3D(_SingleScatteringTableAerosolNoShadows);
  * accessible because I haven't set up any way to reallocate these on the
  * fly. */
 #define SINGLE_SCATTERING_TABLE_SIZE_H 32
-#define SINGLE_SCATTERING_TABLE_SIZE_PHI 128
-#define SINGLE_SCATTERING_TABLE_SIZE_PHI_L 32
+#define SINGLE_SCATTERING_TABLE_SIZE_MU 128
+#define SINGLE_SCATTERING_TABLE_SIZE_MU_L 32
 #define SINGLE_SCATTERING_TABLE_SIZE_NU 32
 
 /* Ground irradiance tables. Leverages spherical symmetry of the atmosphere,
  * parameterized by:
- * phi (x dimension): dot product between the surface normal and the
+ * mu (x dimension): dot product between the surface normal and the
  * light direction. */
 TEXTURE2D(_GroundIrradianceTableAir);
 TEXTURE2D(_GroundIrradianceTableAerosol);
@@ -115,7 +117,7 @@ TEXTURE2D(_GroundIrradianceTableAerosol);
 /* Local multiple scattering table. Leverages spherical symmetry of the atmosphere,
  * parameterized by:
  * h (x dimension): the height of the camera.
- * phi_l (y dimension): dot product between the surface normal and the
+ * mu_l (y dimension): dot product between the surface normal and the
  * light direction. */
 TEXTURE2D(_LocalMultipleScatteringTable);
 /* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
@@ -123,13 +125,13 @@ TEXTURE2D(_LocalMultipleScatteringTable);
  * accessible because I haven't set up any way to reallocate these on the
  * fly. */
 #define MULTIPLE_SCATTERING_TABLE_SIZE_H 32
-#define MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L 32
+#define MULTIPLE_SCATTERING_TABLE_SIZE_MU_L 32
 
 /* Global multiple scattering tables. Leverage spherical symmetry of the
  * atmosphere, parameterized by:
  * h (x dimension): the height of the camera.
- * phi (y dimension): the zenith angle of the viewing direction.
- * phi_l (z dimension): the zenith angle of the light source.
+ * mu (y dimension): the zenith angle of the viewing direction.
+ * mu_l (z dimension): the zenith angle of the light source.
  * nu (w dimension): the azimuth angle of the light source. */
 TEXTURE3D(_GlobalMultipleScatteringTableAir);
 TEXTURE3D(_GlobalMultipleScatteringTableAerosol);
@@ -138,8 +140,8 @@ TEXTURE3D(_GlobalMultipleScatteringTableAerosol);
  * accessible because I haven't set up any way to reallocate these on the
  * fly. */
 #define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_H 32
-#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI 128
-#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L 32
+#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_MU 128
+#define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_MU_L 32
 #define GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_NU 32
 
 CBUFFER_END
@@ -157,7 +159,7 @@ CBUFFER_END
 #define E 2.7182818285
 #define GOLDEN_RATIO 1.6180339887498948482
 
-#define FLT_EPSILON 0.00001
+#define FLT_EPSILON 0.000001
 
 /******************************************************************************/
 /*************************** END GLOBAL VARIABLES *****************************/
@@ -305,7 +307,7 @@ IntersectionData traceRay(float3 O, float3 d, float planetRadius,
   toRet.groundHit = t_ground.z >= 0.0 && (t_ground.x >= 0.0 || t_ground.y >= 0.0);
   toRet.atmoHit = t_atmo.z >= 0.0 && (t_atmo.x >= 0.0 || t_atmo.y >= 0.0);
 
-  if (length(O) < atmosphereRadius) {
+  if (floatLT(length(O), atmosphereRadius)) {
     /* We are below the atmosphere boundary, and we will start our raymarch
      * at the origin point. */
     toRet.startT = 0;
@@ -469,7 +471,7 @@ float unmap_mu(float u_r, float u_mu, float atmosphereRadius,
   }
 
   float mu = 0.0;
-  if (u_mu < 0.5) {
+  if (floatLT(u_mu, 0.5)) {
     float d_min = r - planetRadius;
     float d_max = rho;
     float d = d_min + (d_max - d_min) * (1.0 - (1.0 / 0.49) * u_mu);
@@ -530,7 +532,7 @@ float2 unmap_r_mu(float u_r, float u_mu, float atmosphereRadius,
   }
 
   float mu = 0.0;
-  if (u_mu < 0.5) {
+  if (floatLT(u_mu, 0.5)) {
     float d_min = r - planetRadius;
     float d_max = rho;
     float d = d_min + (d_max - d_min) * (1.0 - (1.0 / 0.49) * u_mu);
@@ -595,7 +597,7 @@ TexCoord4D mapSingleScatteringCoordinates(float r, float mu, float mu_l,
   float2 u_r_mu = map_r_mu(r, mu, atmosphereRadius, planetRadius,
     d, groundHit);
   float3 deepTexCoord = uvToDeepTexCoord(map_mu_l(mu_l), map_nu(nu),
-    SINGLE_SCATTERING_TABLE_SIZE_PHI_L, SINGLE_SCATTERING_TABLE_SIZE_NU);
+    SINGLE_SCATTERING_TABLE_SIZE_MU_L, SINGLE_SCATTERING_TABLE_SIZE_NU);
   TexCoord4D toRet = {u_r_mu.x, u_r_mu.y, deepTexCoord.x,
     deepTexCoord.y, deepTexCoord.z};
   return toRet;
@@ -640,7 +642,7 @@ TexCoord4D mapGlobalMultipleScatteringCoordinates(float r, float mu,
   float2 u_r_mu = map_r_mu(r, mu, atmosphereRadius, planetRadius,
     d, groundHit);
   float3 deepTexCoord = uvToDeepTexCoord(map_mu_l(mu_l), map_nu(nu),
-    GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_PHI_L,
+    GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_MU_L,
     GLOBAL_MULTIPLE_SCATTERING_TABLE_SIZE_NU);
   TexCoord4D toRet = {u_r_mu.x, u_r_mu.y, deepTexCoord.x,
     deepTexCoord.y, deepTexCoord.z};
