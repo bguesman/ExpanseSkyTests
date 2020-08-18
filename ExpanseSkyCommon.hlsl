@@ -67,6 +67,19 @@ TEXTURE2D(_TransmittanceTable);
 #define TRANSMITTANCE_TABLE_SIZE_H 32
 #define TRANSMITTANCE_TABLE_SIZE_PHI 128
 
+/* Light pollution table. Leverages spherical symmetry of the atmosphere,
+ * parameterized by:
+ * h (x dimension): the height of the camera.
+ * phi (y dimension): the zenith angle of the viewing direction. */
+TEXTURE2D(_LightPollutionTableAir);
+TEXTURE2D(_LightPollutionTableAerosol);
+/* Table dimensions. Must match those in ExpanseSkyRenderer.cs. TODO: would
+ * be great to be able to set these as constants. I don't want to make them
+ * accessible because I haven't set up any way to reallocate these on the
+ * fly. */
+#define LIGHT_POLLUTION_TABLE_SIZE_H 32
+#define LIGHT_POLLUTION_TABLE_SIZE_PHI 128
+
 /* Single scattering tables. Leverage spherical symmetry of the atmosphere,
  * parameterized by:
  * h (x dimension): the height of the camera.

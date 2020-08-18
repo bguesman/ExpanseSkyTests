@@ -330,7 +330,7 @@ Shader "HDRP/Sky/ExpanseSky"
      * where it's >100 for a sec. */
     float3 skyColor = float3(0, 0, 0);
     float3 nightAirScattering = float3(0, 0, 0);
-    float3 starAerosolScattering = float3(0, 0, 0);
+    float3 lightPollution = float3(0, 0, 0);
     if (intersection.groundHit || intersection.atmoHit) {
       int lightCount = _DirectionalLightCount;
       for (int i = 0; i < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); i++) {
@@ -383,16 +383,19 @@ Shader "HDRP/Sky/ExpanseSky"
           + _aerosolCoefficient * msAerosol)
           * _multipleScatteringMultiplier;
 
-        /* Consider light pollution to be isotropically scattered, so don't
-         * apply phase functions. */
-        float3 lightPollution = (_lightPollutionTint * _lightPollutionIntensity)
-        * ((finalMultipleScattering) + (0.25/PI) * (2.0 * _skyTintF3 * _airCoefficientsF3
-          * singleScatteringContributionAir
-          + _aerosolCoefficient * singleScatteringContributionAerosol));
-
         skyColor +=
-          (finalSingleScattering + finalMultipleScattering) * lightColor + lightPollution;
+          (finalSingleScattering + finalMultipleScattering) * lightColor;
       }
+
+      /* Consider light pollution to be isotropically scattered, so don't
+       * apply phase functions. */
+      float3 lightPollutionAir = SAMPLE_TEXTURE2D(_LightPollutionTableAir,
+        s_linear_clamp_sampler, transmittanceUV);
+      float3 lightPollutionAerosol = SAMPLE_TEXTURE2D(_LightPollutionTableAerosol,
+        s_linear_clamp_sampler, transmittanceUV);
+      lightPollution = (2.0 * _skyTintF3 * _airCoefficientsF3
+        * lightPollutionAir + _aerosolCoefficient * lightPollutionAerosol)
+        * _lightPollutionTint * _lightPollutionIntensity;
 
       /* HACK: to get some sort of approximation of rayleigh scattering
        * for the ambient night color of the sky. */
@@ -426,7 +429,7 @@ Shader "HDRP/Sky/ExpanseSky"
 
     float dither = 1.0 + _ditherAmount * (0.5 - random(d.xy));
     return dither * exposure * (finalDirectLighting
-      + skyColor + nightAirScattering + starAerosolScattering);
+      + skyColor + nightAirScattering + lightPollution);
   }
 
   float4 FragBaking(Varyings input) : SV_Target

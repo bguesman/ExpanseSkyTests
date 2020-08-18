@@ -4,6 +4,7 @@
 /* For now, we'll start with one kernel to compute the transmittance
  * tables. */
 #pragma kernel COMPUTE_TRANSMITTANCE main=COMPUTE_TRANSMITTANCE
+#pragma kernel COMPUTE_LIGHT_POLLUTION main=COMPUTE_LIGHT_POLLUTION
 #pragma kernel COMPUTE_SINGLE_SCATTERING main=COMPUTE_SINGLE_SCATTERING
 #pragma kernel COMPUTE_GROUND_IRRADIANCE main=COMPUTE_GROUND_IRRADIANCE
 #pragma kernel COMPUTE_LOCAL_MULTIPLE_SCATTERING main=COMPUTE_LOCAL_MULTIPLE_SCATTERING
@@ -20,6 +21,13 @@
  * h (x dimension): the height of the camera.
  * phi (y dimension): the zenith angle of the viewing direction. */
 RW_TEXTURE2D(float3, _TransmittanceTableRW);
+
+/* Light pollution table. Leverages spherical symmetry of the atmosphere,
+ * parameterized by:
+ * h (x dimension): the height of the camera.
+ * phi (y dimension): the zenith angle of the viewing direction. */
+RW_TEXTURE2D(float3, _LightPollutionTableAirRW);
+RW_TEXTURE2D(float3, _LightPollutionTableAerosolRW);
 
 /* Single scattering tables. Leverage spherical symmetry of the atmosphere,
  * parameterized by:
@@ -93,6 +101,98 @@ void COMPUTE_TRANSMITTANCE (uint3 id : SV_DispatchThreadID)
        - 1.1 * _aerosolCoefficient * opticalDepthAerosol);
 
     _TransmittanceTableRW[id.xy] = T;
+}
+
+[numthreads(4,4,1)]
+void COMPUTE_LIGHT_POLLUTION (uint3 id : SV_DispatchThreadID)
+{
+    /* Get the uv for this id and unwrap it to a viewing angle and a
+     * height. */
+    float u_r = (id.x + 0.5f) / float(LIGHT_POLLUTION_TABLE_SIZE_H);
+    float u_mu = (id.y + 0.5f) / float(LIGHT_POLLUTION_TABLE_SIZE_PHI);
+
+    float2 r_mu = unmapTransmittanceCoordinates(u_r, u_mu, _atmosphereRadius,
+      _planetRadius);
+
+    float r = r_mu.x;
+    float mu = r_mu.y;
+
+    float3 O = float3(0, r, 0);
+    float3 d = float3(safeSqrt(1 - mu * mu), mu, 0);
+
+    /* Trace a ray to see what we hit. */
+    IntersectionData intersection = traceRay(O, d, _planetRadius,
+      _atmosphereRadius);
+    float3 endPoint = O + d * intersection.endT;
+
+    float3 lightPollutionAir = float3(0.0, 0.0, 0.0);
+    float3 lightPollutionAerosol = float3(0.0, 0.0, 0.0);
+    for (int i = 0; i < _numberOfScatteringSamples; i++) {
+      float sampleT = 0.0;
+      float ds = 0.0;
+      if (_useImportanceSampling) {
+        /* Distribute samples cubically. This isn't optimal for the ozone
+         * layer, which actually samples better using a linear distribution,
+         * but around a sample count of 10 is enough to not notice the
+         * difference, since we still distribute the ozone samples linearly
+         * for the secondary sampling. We could theoretically compute a
+         * second sample point here exclusively for the ozone, but that
+         * seems inefficient. */
+        float2 t_ds = intersection.endT * generateCubicSampleFromIndex(i, _numberOfScatteringSamples);
+        sampleT = t_ds.x;
+        ds = t_ds.y;
+      } else {
+        /* Distribute linearly. */
+        float2 t_ds = intersection.endT * generateLinearSampleFromIndex(i, _numberOfScatteringSamples);
+        sampleT = t_ds.x;
+        ds = t_ds.y;
+      }
+
+      float3 samplePoint = O + d * sampleT;
+
+      /* Compute the scaled densities of air and aerosol layers at the
+       * sample point. */
+      float scaledDensityAir = computeDensityExponential(samplePoint,
+        _planetRadius, _scaleHeightAir, _airDensity) * ds;
+      float scaledDensityAerosol = computeDensityExponential(samplePoint,
+        _planetRadius, _scaleHeightAerosols, _aerosolDensity) * ds;
+
+      /* Compute transmittance from O to sample point. */
+      float2 oToSample = mapTransmittanceCoordinates(length(O),
+        mu, _atmosphereRadius, _planetRadius, intersection.endT, intersection.groundHit);
+
+      float3 T_oToSample = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+        s_linear_clamp_sampler, oToSample, 0).rgb;
+
+      /* If we didn't hit the ground, then our transmittance value for
+       * O to the sample point is too large---we need to divide out
+       * the transmittance from the sample point to the atmosphere. */
+      if (!intersection.groundHit) {
+        float2 sampleOut = mapTransmittanceCoordinates(length(samplePoint),
+          clampCosine(dot(normalize(samplePoint), d)), _atmosphereRadius, _planetRadius,
+          intersection.endT - sampleT, false);
+        float3 T_sampleOut = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+          s_linear_clamp_sampler, sampleOut, 0).rgb;
+        /* Clamp sample out for division. */
+        T_sampleOut = max(T_sampleOut, FLT_EPSILON);
+        T_oToSample /= T_sampleOut;
+      }
+
+      /* Compute the light transmittance to the ground. */
+      float2 sampleToGround = mapTransmittanceCoordinates(length(samplePoint),
+        -1.0, _atmosphereRadius, _planetRadius,
+        length(samplePoint) - _planetRadius, true);
+      float3 T_sampleToGround = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
+        s_linear_clamp_sampler, sampleToGround, 0).rgb;
+
+      float3 T = T_oToSample * T_sampleToGround;
+
+      lightPollutionAir += scaledDensityAir * T;
+      lightPollutionAerosol += scaledDensityAerosol * T;
+    }
+
+    _LightPollutionTableAirRW[id.xy] = lightPollutionAir;
+    _LightPollutionTableAerosolRW[id.xy] = lightPollutionAerosol;
 }
 
 /* TODO: lots of places we use startPoint instead of O. But the tables

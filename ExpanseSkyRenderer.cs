@@ -93,6 +93,8 @@ class ExpanseSkyRenderer : SkyRenderer
 
     /* Tables. */
     public static readonly int _transmittanceTableID = Shader.PropertyToID("_TransmittanceTable");
+    public static readonly int _lightPollutionTableAirID = Shader.PropertyToID("_LightPollutionTableAir");
+    public static readonly int _lightPollutionTableAerosolID = Shader.PropertyToID("_LightPollutionTableAerosol");
     public static readonly int _groundIrradianceTableAirID = Shader.PropertyToID("_GroundIrradianceTableAir");
     public static readonly int _groundIrradianceTableAerosolID = Shader.PropertyToID("_GroundIrradianceTableAerosol");
     public static readonly int _singleScatteringTableAirID = Shader.PropertyToID("_SingleScatteringTableAir");
@@ -110,6 +112,9 @@ class ExpanseSkyRenderer : SkyRenderer
      * TODO: rename phi to mu. */
     const int TransmittanceTableSizeH = 32;
     const int TransmittanceTableSizePhi = 128;
+
+    const int LightPollutionTableSizeH = 32;
+    const int LightPollutionTableSizePhi = 128;
 
     const int SingleScatteringTableSizeH = 32;
     const int SingleScatteringTableSizePhi = 128;
@@ -131,6 +136,12 @@ class ExpanseSkyRenderer : SkyRenderer
      * h (x dimension): the height of the camera.
      * phi (y dimension): the zenith angle of the viewing direction. */
     RTHandle[]                   m_TransmittanceTables;
+
+    /* Light pollution table. Leverages spherical symmetry of the atmosphere,
+     * parameterized by:
+     * h (x dimension): the height of the camera.
+     * phi (y dimension): the zenith angle of the viewing direction. */
+    RTHandle[]                   m_LightPollutionTables;
 
     /* Single scattering table. Leverages spherical symmetry of the atmosphere,
      * parameterized by:
@@ -177,6 +188,20 @@ class ExpanseSkyRenderer : SkyRenderer
                                     colorFormat: s_ColorFormat,
                                     enableRandomWrite: true,
                                     name: string.Format("TransmittanceTable{0}", index));
+
+        Debug.Assert(table != null);
+
+        return table;
+    }
+
+    RTHandle AllocateLightPollutionTable(int index)
+    {
+        var table = RTHandles.Alloc(LightPollutionTableSizeH,
+                                    LightPollutionTableSizePhi,
+                                    dimension: TextureDimension.Tex2D,
+                                    colorFormat: s_ColorFormat,
+                                    enableRandomWrite: true,
+                                    name: string.Format("LightPollutionTable{0}", index));
 
         Debug.Assert(table != null);
 
@@ -262,6 +287,10 @@ class ExpanseSkyRenderer : SkyRenderer
       m_TransmittanceTables[0] = AllocateTransmittanceTable(0);
       m_TransmittanceTables[1] = AllocateTransmittanceTable(1);
 
+      m_LightPollutionTables = new RTHandle[2];
+      m_LightPollutionTables[0] = AllocateLightPollutionTable(0);
+      m_LightPollutionTables[1] = AllocateLightPollutionTable(1);
+
       m_GroundIrradianceTables = new RTHandle[2];
       m_GroundIrradianceTables[0] = AllocateGroundIrradianceTable(0);
       m_GroundIrradianceTables[1] = AllocateGroundIrradianceTable(1);
@@ -299,6 +328,11 @@ class ExpanseSkyRenderer : SkyRenderer
         m_TransmittanceTables[0] = null;
         RTHandles.Release(m_TransmittanceTables[1]);
         m_TransmittanceTables[1] = null;
+
+        RTHandles.Release(m_LightPollutionTables[0]);
+        m_LightPollutionTables[0] = null;
+        RTHandles.Release(m_LightPollutionTables[1]);
+        m_LightPollutionTables[1] = null;
 
         RTHandles.Release(m_SingleScatteringTables[0]);
         m_SingleScatteringTables[0] = null;
@@ -376,6 +410,8 @@ class ExpanseSkyRenderer : SkyRenderer
 
         /* Set the texture for the actual sky shader. */
         cmd.SetGlobalTexture(_transmittanceTableID, m_TransmittanceTables[0]);
+        cmd.SetGlobalTexture(_lightPollutionTableAirID, m_LightPollutionTables[0]);
+        cmd.SetGlobalTexture(_lightPollutionTableAerosolID, m_LightPollutionTables[1]);
         cmd.SetGlobalTexture(_groundIrradianceTableAirID, m_GroundIrradianceTables[0]);
         cmd.SetGlobalTexture(_groundIrradianceTableAerosolID, m_GroundIrradianceTables[1]);
         cmd.SetGlobalTexture(_singleScatteringTableAirID, m_SingleScatteringTables[0]);
@@ -393,6 +429,14 @@ class ExpanseSkyRenderer : SkyRenderer
       /* Set the texture for the compute shader. */
       s_PrecomputeCS.SetTexture(transmittanceKernelHandle, "_TransmittanceTableRW",
         m_TransmittanceTables[0]);
+
+      int lightPollutionKernelHandle =
+        s_PrecomputeCS.FindKernel("COMPUTE_LIGHT_POLLUTION");
+      /* Set the texture for the compute shader. */
+      s_PrecomputeCS.SetTexture(lightPollutionKernelHandle, "_LightPollutionTableAirRW",
+        m_LightPollutionTables[0]);
+      s_PrecomputeCS.SetTexture(lightPollutionKernelHandle, "_LightPollutionTableAerosolRW",
+        m_LightPollutionTables[1]);
 
       int groundIrradianceKernelHandle =
         s_PrecomputeCS.FindKernel("COMPUTE_GROUND_IRRADIANCE");
@@ -437,6 +481,11 @@ class ExpanseSkyRenderer : SkyRenderer
           s_PrecomputeCS.FindKernel("COMPUTE_TRANSMITTANCE");
         cmd.DispatchCompute(s_PrecomputeCS, transmittanceKernelHandle,
           TransmittanceTableSizeH / 4, TransmittanceTableSizePhi / 4, 1);
+
+        int lightPollutionKernelHandle =
+          s_PrecomputeCS.FindKernel("COMPUTE_LIGHT_POLLUTION");
+        cmd.DispatchCompute(s_PrecomputeCS, lightPollutionKernelHandle,
+          LightPollutionTableSizeH / 4, LightPollutionTableSizePhi / 4, 1);
 
         int singleScatteringKernelHandle =
           s_PrecomputeCS.FindKernel("COMPUTE_SINGLE_SCATTERING");
