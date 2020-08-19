@@ -211,10 +211,11 @@ Shader "HDRP/Sky/ExpanseSky"
             groundAlbedo *= SAMPLE_TEXTURECUBE_LOD(_groundAlbedoTexture,
               sampler_Cubemap, mul(normalize(endPoint), (float3x3)_planetRotation), 0).rgb;
           }
+          groundAlbedo /= PI;
 
           /* Compute direct lighting. */
           float cos_hit_l = dot(normalize(endPoint), L);
-          L0 += groundAlbedo * lightColor * (1.0 / PI) * saturate(cos_hit_l);
+          L0 += groundAlbedo * lightColor * saturate(cos_hit_l);
 
           /* Compute ground irradiance lighting. */
           float2 groundIrradianceUV = mapGroundIrradianceCoordinates(cos_hit_l);
@@ -224,9 +225,9 @@ Shader "HDRP/Sky/ExpanseSky"
           float3 groundIrradianceAerosol =
             SAMPLE_TEXTURE2D(_GroundIrradianceTableAerosol,
             s_linear_clamp_sampler, groundIrradianceUV).rgb;
-          L0 += _groundTintF3 * lightColor
-            * (_skyTintF3 * 2.0 * groundIrradianceAir
-              + groundIrradianceAerosol);
+          L0 += groundAlbedo * lightColor
+            * (_skyTintF3 * 2.0 * _airCoefficientsF3 * groundIrradianceAir
+              + _aerosolCoefficient * groundIrradianceAerosol);
           k++;
         }
         i++;

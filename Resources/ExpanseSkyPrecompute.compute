@@ -137,12 +137,12 @@ void COMPUTE_LIGHT_POLLUTION (uint3 id : SV_DispatchThreadID)
          * for the secondary sampling. We could theoretically compute a
          * second sample point here exclusively for the ozone, but that
          * seems inefficient. */
-        float2 t_ds = intersection.endT * generateCubicSampleFromIndex(i, _numberOfScatteringSamples);
+        float2 t_ds = intersection.endT * generateCubicSampleFromIndex(i, _numberOfLightPollutionSamples);
         sampleT = t_ds.x;
         ds = t_ds.y;
       } else {
         /* Distribute linearly. */
-        float2 t_ds = intersection.endT * generateLinearSampleFromIndex(i, _numberOfScatteringSamples);
+        float2 t_ds = intersection.endT * generateLinearSampleFromIndex(i, _numberOfLightPollutionSamples);
         sampleT = t_ds.x;
         ds = t_ds.y;
       }
@@ -193,10 +193,6 @@ void COMPUTE_LIGHT_POLLUTION (uint3 id : SV_DispatchThreadID)
     _LightPollutionTableAirRW[id.xy] = lightPollutionAir;
     _LightPollutionTableAerosolRW[id.xy] = lightPollutionAerosol;
 }
-
-/* TODO: lots of places we use O instead of O. But the tables
- * are all only defined for origin points within the atmo, so O will
- * always be valid and we don't ever need to calculate O. */
 
 [numthreads(4,4,4)]
 void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
@@ -337,7 +333,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
   float u_mu_l = (id.x + 0.5f) / float(GROUND_IRRADIANCE_TABLE_SIZE);
 
-  float2 r_mu_l = unmapGroundIrradianceCoordinates(u_mu_l);
+  float2 r_mu_l = unmapGroundIrradianceCoordinates(u_mu_l, _planetRadius);
   float r = r_mu_l.x;
   float mu_l = r_mu_l.y;
 
@@ -375,9 +371,9 @@ void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
       float rayleighPhase = computeAirPhase(dot_L_d);
       float miePhase = computeAerosolPhase(dot_L_d, g);
 
-      airContrib += _airCoefficientsF3 * singleScatteringContributionAir
+      airContrib += singleScatteringContributionAir
       * rayleighPhase * PI / float(_numberOfGroundIrradianceSamples);
-      aerosolContrib += _aerosolCoefficient * singleScatteringContributionAerosol
+      aerosolContrib += singleScatteringContributionAerosol
         * miePhase * PI / float(_numberOfGroundIrradianceSamples);
     }
   }

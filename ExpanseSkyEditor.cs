@@ -126,7 +126,7 @@ class ExpanseSkyEditor : SkySettingsEditor
         ozoneDensity = Unpack(o.Find(x => x.ozoneDensity));
 
         /* Artistic Overrides. */
-        skyTint = Unpack(o.Find(x => x.ozoneHeight));
+        skyTint = Unpack(o.Find(x => x.skyTint));
         multipleScatteringMultiplier = Unpack(o.Find(x => x.multipleScatteringMultiplier));
 
         /* Body 1. */

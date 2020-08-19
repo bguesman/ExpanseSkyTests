@@ -566,7 +566,7 @@ class ExpanseSkyRenderer : SkyRenderer
             m_PropertyBlock.SetVector(_skyTintID, expanseSky.skyTint.value);
             m_PropertyBlock.SetFloat(_multipleScatteringMultiplierID, expanseSky.multipleScatteringMultiplier.value);
             m_PropertyBlock.SetFloat(_useAntiAliasingID, expanseSky.useAntiAliasing.value ? 1f : 0f);
-            m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value);
+            m_PropertyBlock.SetFloat(_ditherAmountID, expanseSky.ditherAmount.value * 0.25f);
 
             /* Celestial bodies. */
             /* Body 1. */

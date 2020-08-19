@@ -16,91 +16,88 @@ public class ExpanseSky : SkySettings
   /********************************* Parameters ***********************************/
   /********************************************************************************/
 
-  /* TODO: how do we group these nicely under titles in the UI? */
-  /* TODO: when we finalize these, write nice descriptions. */
-
   /* Planet Parameters. */
-  [Tooltip("Specify the total thickness of the atmosphere.")]
+  [Tooltip("The total thickness of the atmosphere, in meters.")]
   public ClampedFloatParameter atmosphereThickness = new ClampedFloatParameter(40000, 0, 200000);
 
-  [Tooltip("Specify the radius of the planet.")]
-  public ClampedFloatParameter planetRadius = new ClampedFloatParameter(6360000, 0, 20000000);
+  [Tooltip("The radius of the planet, in meters.")]
+  public ClampedFloatParameter planetRadius = new ClampedFloatParameter(6360000, 10, 20000000);
 
-  [Tooltip("Specify the ground albedo.")]
+  [Tooltip("The ground albedo as a cubemap texture. The ground is modeled as a Lambertian (completely diffuse) reflector. If no texture is specified, the color of the ground will just be the ground tint.")]
   public CubemapParameter groundAlbedoTexture = new CubemapParameter(null);
 
-  [Tooltip("Specify a color to tint the ground texture. If there is no ground texture specified, this is just the color of the ground.")]
+  [Tooltip("A color tint to the ground texture. Perfect grey, (128, 128, 128), specifies no tint. If there is no ground texture specified, this is just the color of the ground.")]
   public ColorParameter groundTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
-  [Tooltip("Specify emissive parts of the ground.")]
+  [Tooltip("The ground emission as a cubemap texture. Useful for modeling things like city lights. Has no effect on the sky. See \"Light Pollution\" for a way of modeling an emissive ground's effect on the atmosphere.")]
   public CubemapParameter groundEmissionTexture = new CubemapParameter(null);
 
-  [Tooltip("Specify a multiplier on the ground emission texture.")]
+  [Tooltip("An intensity multiplier on the ground emission texture.")]
   public ClampedFloatParameter groundEmissionMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 100000.0f);
 
-  [Tooltip("Specify the rotation of the planet textures as euler angles. This won't do anything to light directions, star rotations, etc. It is purely for rotating the planet's albedo and emissive textures.")]
+  [Tooltip("The rotation of the planet textures as euler angles. This won't do anything to light directions, star rotations, etc. It is purely for rotating the planet's albedo and emissive textures.")]
   public Vector3Parameter planetRotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   /* Night Sky Parameters. */
-  [Tooltip("Specify the cubemap HDRP uses to render the sky.")]
+  [Tooltip("The cubemap texture used to render stars and nebulae.")]
   public CubemapParameter nightSkyTexture = new CubemapParameter(null);
 
-  [Tooltip("Specify the rotation of the night sky as euler angles.")]
+  [Tooltip("The rotation of the night sky texture as euler angles.")]
   public Vector3Parameter nightSkyRotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
-  [Tooltip("Specify a color to tint the night sky HDRI.")]
+  [Tooltip("A color tint to the night sky texture. Perfect grey, (128, 128, 128), specifies no tint. If there is no night sky texture specified, this is just the color of the night sky.")]
   public ColorParameter nightTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
-  [Tooltip("Specify the intensity of the night sky.")]
+  [Tooltip("An intensity multiplier on the night sky texture. Physical luminance values of stars on Earth are very close to zero. However, this rarely plays well with auto-exposure settings.")]
   public ClampedFloatParameter nightIntensity = new ClampedFloatParameter(10.0f, 0.0f, 100000.0f);
 
-  [Tooltip("Specify a color to tint to the light pollution.")]
+  [Tooltip("The color of light pollution from emissive elements on the ground, i.e. city lights, cars, buildings")]
   public ColorParameter lightPollutionTint = new ColorParameter(Color.white, hdr: false, showAlpha: false, showEyeDropper: true);
 
-  [Tooltip("Specify a multiplier on the ground emission texture.")]
+  [Tooltip("The intensity of light pollution from emissive elements on the ground, i.e. city lights, cars, buildings.")]
   public ClampedFloatParameter lightPollutionIntensity = new ClampedFloatParameter(0.0f, 0.0f, 10000.0f);
 
   /* Aerosol Parameters. */
-  [Tooltip("Specify the scattering coefficient for Mie scattering due to aerosols.")]
+  [Tooltip("The scattering coefficient for Mie scattering due to aerosols at sea level. The value on Earth is 0.000021.")]
   public FloatParameter aerosolCoefficient = new FloatParameter(0.000021f);
 
-  [Tooltip("Specify the scale height for aerosols. This parameterizes the density falloff of the aerosol layer as it extends toward space")]
+  [Tooltip("The scale height for aerosols. This parameterizes the density falloff of the aerosol layer as it extends toward space. Adjusting this and the aerosol scale height can give the sky a dusty or foggy look.")]
   public ClampedFloatParameter scaleHeightAerosols = new ClampedFloatParameter(1200, 0, 100000);
 
-  [Tooltip("Specify the anisotropy factor for Mie scattering.")]
+  [Tooltip("The anisotropy factor for Mie scattering. 0.76 is a reasonable value for Earth. 1.0 specifies fully directional toward the light source, and -1.0 specifies fully directional away from the light source.")]
   public ClampedFloatParameter aerosolAnisotropy = new ClampedFloatParameter(0.76f, -1.0f, 1.0f);
 
-  [Tooltip("Controls the density of aerosols in the atmosphere. 1.0 is the density you would find on earth.")]
+  [Tooltip("The density of aerosols in the atmosphere. 1.0 is the density you would find on Earth. Adjusting this and the aerosol scale height can give the sky a dusty or foggy look.")]
   public ClampedFloatParameter aerosolDensity = new ClampedFloatParameter(1.0f, 0.0f, 10.0f);
 
   /* Air Parameters. */
-  [Tooltip("Specify the scattering coefficients for Rayleigh scattering due to air, which is wavelength dependent.")]
+  [Tooltip("The scattering coefficients for wavelength dependent Rayleigh scattering due to air at sea level. Adjusting this can subtly can model changes in the gas composition of the air on the Earth. Adjusting it dramatically will take you into the territory of alien skies.")]
   public Vector3Parameter airCoefficients = new Vector3Parameter(new Vector3(0.0000058f, 0.0000135f, 0.0000331f));
 
-  [Tooltip("Specify the scale height for air. This parameterizes the density falloff of the air layer as it extends toward space.")]
+  [Tooltip("The scale height for air. This parameterizes the density falloff of the air layer as it extends toward space.")]
   public ClampedFloatParameter scaleHeightAir = new ClampedFloatParameter(8000, 0, 100000);
 
-  [Tooltip("Controls the density of the air layer. 1.0 is the density you would find on earth.")]
+  [Tooltip("The density of the air. 1.0 is the density you would find on Earth.")]
   public ClampedFloatParameter airDensity = new ClampedFloatParameter(1.0f, 0.0f, 10.0f);
 
   /* Ozone Parameters. */
-  [Tooltip("Specify the scattering coefficients for Rayleigh scattering due to the ozone, which is wavelength dependent.")]
+  [Tooltip("The scattering coefficients for wavelength dependent Rayleigh scattering due to the ozone at sea level.")]
   public Vector3Parameter ozoneCoefficients = new Vector3Parameter(new Vector3(0.00000206f, 0.00000498f, 0.000000214f));
 
-  [Tooltip("Specify the thickness of the ozone layer.")]
+  [Tooltip("The thickness of the ozone layer.")]
   public ClampedFloatParameter ozoneThickness = new ClampedFloatParameter(30000, 0, 100000);
 
-  [Tooltip("Specify the height of the ozone layer.")]
+  [Tooltip("The height of the ozone layer.")]
   public ClampedFloatParameter ozoneHeight = new ClampedFloatParameter(25000, 0, 100000);
 
-  [Tooltip("Controls the density of the ozone layer. 1.0 is the density you would find on earth.")]
-  public ClampedFloatParameter ozoneDensity = new ClampedFloatParameter(1.0f, 0.0f, 10.0f);
+  [Tooltip("Controls the density of the ozone layer. Anywhere between 0.0 and 1.0 is reasonable for a density you would find on Earth. Pushing this higher will deepen the blue of the daytime sky, and further saturate the vibrant colors of sunsets and sunrises.")]
+  public ClampedFloatParameter ozoneDensity = new ClampedFloatParameter(0.3f, 0.0f, 10.0f);
 
   /* Artistic overrides. */
-  [Tooltip("Specify a tint to the overall sky color.")]
+  [Tooltip("A tint to the overall sky color. Perfect grey, (128, 128, 128), specifies no tint.")]
   public ColorParameter skyTint = new ColorParameter(Color.grey, hdr: false, showAlpha: false, showEyeDropper: true);
 
-  [Tooltip("Multiplier on multiple scattering")]
+  [Tooltip("A multiplier on the multiple scattering contribution. 1.0 is physically accurate. Pushing this above 1.0 can make the daytime sky brighter and more vibrant.")]
   public ClampedFloatParameter multipleScatteringMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
 
   /* Celestial Bodies. TODO: as of now, we support up to 4 celestial bodies.
@@ -111,91 +108,91 @@ public class ExpanseSky : SkySettings
    * directional light itself, and so must be specified here if we aren't
    * going to hack the Unity base code. */
   [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
+  + "physically accurate for emissive celestial bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body1LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
-  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  [Tooltip("Whether the celestial body receives light from other celestial bodies.")]
   public BoolParameter body1ReceivesLight = new BoolParameter(false);
-  [Tooltip("Specifies texture for surface albedo of celestial body #1.")]
+  [Tooltip("The texture for the surface albedo of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body1AlbedoTexture = new CubemapParameter(null);
-  [Tooltip("Specifies whether the body is emissive.")]
+  [Tooltip("Whether the celestial body is emissive.")]
   public BoolParameter body1Emissive = new BoolParameter(true);
-  [Tooltip("Specifies texture for surface albedo of celestial body #1.")]
+  [Tooltip("The texture for emission of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body1EmissionTexture = new CubemapParameter(null);
-  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #1.")]
+  [Tooltip("The rotation of the albedo and emission textures for the celestial body.")]
   public Vector3Parameter body1Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
+  + "physically accurate for emissive celestial bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body2LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
-  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  [Tooltip("Whether the celestial body receives light from other celestial bodies.")]
   public BoolParameter body2ReceivesLight = new BoolParameter(false);
-  [Tooltip("Specifies texture for surface albedo of celestial body #2.")]
+  [Tooltip("The texture for the surface albedo of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body2AlbedoTexture = new CubemapParameter(null);
-  [Tooltip("Specifies whether the body is emissive.")]
+  [Tooltip("Whether the celestial body is emissive.")]
   public BoolParameter body2Emissive = new BoolParameter(true);
-  [Tooltip("Specifies texture for surface albedo of celestial body #2.")]
+  [Tooltip("The texture for emission of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body2EmissionTexture = new CubemapParameter(null);
-  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #2.")]
+  [Tooltip("The rotation of the albedo and emission textures for the celestial body.")]
   public Vector3Parameter body2Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
+  + "physically accurate for emissive celestial bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body3LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
-  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  [Tooltip("Whether the celestial body receives light from other celestial bodies.")]
   public BoolParameter body3ReceivesLight = new BoolParameter(false);
-  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
+  [Tooltip("The texture for the surface albedo of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body3AlbedoTexture = new CubemapParameter(null);
-  [Tooltip("Specifies whether the body is emissive.")]
+  [Tooltip("Whether the celestial body is emissive.")]
   public BoolParameter body3Emissive = new BoolParameter(true);
-  [Tooltip("Specifies texture for surface albedo of celestial body #3.")]
+  [Tooltip("The texture for emission of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body3EmissionTexture = new CubemapParameter(null);
-  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #2.")]
+  [Tooltip("The rotation of the albedo and emission textures for the celestial body.")]
   public Vector3Parameter body3Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   [Tooltip("Darkens the edges of emissive celestial bodies. A value of 1.0 is "
-  + "physically accurate for emissive bodies. A value of 0.0 will turn off the effect "
+  + "physically accurate for emissive celestial bodies. A value of 0.0 will turn off the effect "
   + "entirely. Higher values will darken more, lower values will darken less.")]
   public ClampedFloatParameter body4LimbDarkening = new ClampedFloatParameter(1.0f, 0.0f, 30.0f);
-  [Tooltip("Specifies whether the body receives light from other celestial bodies.")]
+  [Tooltip("Whether the celestial body receives light from other celestial bodies.")]
   public BoolParameter body4ReceivesLight = new BoolParameter(false);
-  [Tooltip("Specifies texture for surface albedo of celestial body #4.")]
+  [Tooltip("The texture for the surface albedo of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body4AlbedoTexture = new CubemapParameter(null);
-  [Tooltip("Specifies whether the body is emissive.")]
+  [Tooltip("Whether the celestial body is emissive.")]
   public BoolParameter body4Emissive = new BoolParameter(true);
-  [Tooltip("Specifies texture for surface albedo of celestial body #4.")]
+  [Tooltip("The texture for emission of the celestial body. If no texture is specified, the surface tint (specified in the corresponding directional light) will be used.")]
   public CubemapParameter body4EmissionTexture = new CubemapParameter(null);
-  [Tooltip("Specifies the rotation of the albedo and emission textures for celestial body #2.")]
+  [Tooltip("The rotation of the albedo and emission textures for the celestial body.")]
   public Vector3Parameter body4Rotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
   /* Sampling. */
-  [Tooltip("Specify the number of samples to use when sampling along the primary ray.")]
+  [Tooltip("The number of samples used when computing transmittance lookup tables. With importance sampling turned on, a value of as low as 10 gives near-perfect results on the ground. A value as low as 4 is ok if some visible inaccuracy is tolerable. Without importantance sampling, a value of 32 or higher is recommended.")]
   public ClampedIntParameter numberOfTransmittanceSamples = new ClampedIntParameter(10, 1, 256);
 
-  [Tooltip("Specify the number of samples to use when sampling along the secondary ray to compute light pollution.")]
+  [Tooltip("The number of samples used when computing light pollution. With importance sampling turned on, a value of as low as 10 gives near-perfect results on the ground. A value as low as 8 is ok if some visible inaccuracy is tolerable. Without importantance sampling, a value of 64 or higher is recommended.")]
   public ClampedIntParameter numberOfLightPollutionSamples = new ClampedIntParameter(10, 1, 256);
 
-  [Tooltip("Specify the number of samples to use when sampling along the secondary ray in the single scattering computation.")]
+  [Tooltip("The number of samples used when computing single scattering. With importance sampling turned on, a value of as low as 10 gives near-perfect results on the ground. A value as low as 5 is ok if some visible inaccuracy is tolerable. Without importantance sampling, a value of 32 or higher is recommended.")]
   public ClampedIntParameter numberOfScatteringSamples = new ClampedIntParameter(10, 1, 256);
 
-  [Tooltip("Specify the number of samples to use when sampling the ground irradiance.")]
+  [Tooltip("The number of samples used when sampling the ground irradiance. Importance sampling does not apply here. To get a near-perfect result, around 10 samples is necessary. But it is a fairly subtle effect, so as low as 6 samples gives a decent result.")]
   public ClampedIntParameter numberOfGroundIrradianceSamples = new ClampedIntParameter(10, 1, 256);
 
-  [Tooltip("Specify the number of samples to use when computing the initial isotropic estimate of multiple scattering.")]
+  [Tooltip("The number of samples to use when computing the initial isotropic estimate of multiple scattering. Importance sampling does not apply here. To get a near-perfect result, around 15 samples is necessary. But it is a fairly subtle effect, so as low as 6 samples gives a decent result.")]
   public ClampedIntParameter numberOfMultipleScatteringSamples = new ClampedIntParameter(10, 1, 256);
 
-  [Tooltip("Specify the number of samples to use when computing the actual accumulated estimate of multiple scattering from the isotropic estimate.")]
+  [Tooltip("The number of samples to use when computing the actual accumulated estimate of multiple scattering from the isotropic estimate. The number of samples to use when computing the initial isotropic estimate of multiple scattering. With importance sample, 8 samples gives a near-perfect result. However, multiple scattering is a fairly subtle effect, so as low as 3 samples gives a decent result. Without importance sampling, a value of 32 or higher is necessary for near perfect results, but a value of 4 is sufficient for most needs.")]
   public ClampedIntParameter numberOfMultipleScatteringAccumulationSamples = new ClampedIntParameter(10, 1, 256);
 
-  [Tooltip("Specify whether or not to use importance sampling.")]
+  [Tooltip("Whether or not to use importance sampling. Importance sampling is a sample distribution strategy that increases fidelity given a limited budget of samples. It is recommended to turn it on, as it doesn't decrease fidelity, but does allow for fewer samples to be taken, boosting performance. However, for outer-space perspectives, it can sometimes introduce inaccuracies, so it can be useful to increase sample counts and turn off importance sampling in those cases.")]
   public BoolParameter useImportanceSampling = new BoolParameter(true);
 
-  [Tooltip("Specify whether or not to use anti-aliasing. MSAA 8x.")]
+  [Tooltip("Whether or not to use MSAA 8x anti-aliasing. This does negatively affect performance.")]
   public BoolParameter useAntiAliasing = new BoolParameter(true);
 
-  [Tooltip("Controls amount of dithering used to reduce color banding. If this is too high, noise will be visible.")]
+  [Tooltip("Amount of dithering used to reduce color banding. If this is too high, noise will be visible.")]
   public ClampedFloatParameter ditherAmount = new ClampedFloatParameter(0.05f, 0.0f, 1.0f);
 
   /********************************************************************************/

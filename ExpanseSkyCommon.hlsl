@@ -616,9 +616,9 @@ float2 mapGroundIrradianceCoordinates(float mu_l) {
   return float2(map_mu_l(mu_l), 0);
 }
 
-/* Returns r, mu_l. R is always just above the ground, FLT_EPSILON. */
-float2 unmapGroundIrradianceCoordinates(float u_mu_l) {
-  return float2(FLT_EPSILON, unmap_mu_l(u_mu_l));
+/* Returns r, mu_l. R is always just above the ground. */
+float2 unmapGroundIrradianceCoordinates(float u_mu_l, float _planetRadius) {
+  return float2(_planetRadius + 0.01, unmap_mu_l(u_mu_l));
 }
 
 /* This parameterization was taken from Hillaire's 2020 model. */
