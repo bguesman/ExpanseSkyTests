@@ -311,7 +311,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
       if (!intersection.groundHit) {
         /* We'll add the light scattered off the ground surface. */
         float dot_L_sample = saturate(dot(normalize(L), normalize(lightEndPoint)));
-        float3 groundAlbedo = 2.0 * _groundTintF3;
+        float3 groundAlbedo = _groundTintF3;
         groundAlbedo /= PI;
         inScatteringAir += scaledDensityAir * T * (dot_L_sample * groundAlbedo);
         inScatteringAerosol += scaledDensityAerosol * T * (dot_L_sample * groundAlbedo);
@@ -429,7 +429,7 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
         _planetRadius, t_hit, intersection.groundHit);
       float3 groundTransmittance = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
         s_linear_clamp_sampler, groundUV, 0).rgb;
-      float3 groundAlbedo = 2.0 * _groundTintF3;
+      float3 groundAlbedo = _groundTintF3;
       groundAlbedo /= PI;
       secondOrder += groundTransmittance * groundAlbedo
         * saturate(dot(L, normalize(hitPoint)));
