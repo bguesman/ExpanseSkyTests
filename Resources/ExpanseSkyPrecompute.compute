@@ -220,7 +220,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
   float nu = ssCoord.w;
 
   float3 O = float3(0, r, 0);
-  float3 d = normalize(float3(safeSqrt(1 - mu * mu), mu, 0));
+  float3 d = float3(safeSqrt(1 - mu * mu), mu, 0);
   float3 L = float3(nu*safeSqrt(1 - mu_l*mu_l), mu_l,
     safeSqrt(1 - nu * nu)*safeSqrt(1 - mu_l*mu_l));
 
@@ -257,6 +257,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
     }
 
     float3 samplePoint = O + d * sampleT;
+    float3 normalizedSamplePoint = normalize(samplePoint);
 
     /* Trace a ray from the sample point to the light to check visibility. */
     IntersectionData lightIntersection = traceRay(samplePoint, L,
@@ -285,7 +286,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
      * the transmittance from the sample point to the atmosphere. */
     if (!intersection.groundHit) {
       float2 sampleOut = mapTransmittanceCoordinates(length(samplePoint),
-        clampCosine(dot(normalize(samplePoint), d)), _atmosphereRadius, _planetRadius,
+        clampCosine(dot(normalizedSamplePoint, d)), _atmosphereRadius, _planetRadius,
         t_hit - sampleT, false);
       float3 T_sampleOut = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
         s_linear_clamp_sampler, sampleOut, 0).rgb;
@@ -299,7 +300,7 @@ void COMPUTE_SINGLE_SCATTERING (uint3 id : SV_DispatchThreadID)
 
     /* Compute the light transmittance to the sample point. */
     float2 sampleToL = mapTransmittanceCoordinates(length(samplePoint),
-      clampCosine(dot(normalize(samplePoint), L)), _atmosphereRadius, _planetRadius,
+      clampCosine(dot(normalizedSamplePoint, L)), _atmosphereRadius, _planetRadius,
       t_light_hit, lightIntersection.groundHit);
     /* Compute transmittance through sample to light hit point. */
     float3 T_sampleToL = SAMPLE_TEXTURE2D_LOD(_TransmittanceTable,
@@ -338,6 +339,7 @@ void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
   float mu_l = r_mu_l.y;
 
   float3 O = float3(0, r, 0);
+  float3 O_normalized = float3(0, 1, 0);
   float3 L = float3(safeSqrt(1 - mu_l * mu_l), mu_l, 0);
 
   float3 aerosolContrib = float3(0.0, 0.0, 0.0);
@@ -346,10 +348,10 @@ void COMPUTE_GROUND_IRRADIANCE (uint3 id : SV_DispatchThreadID) {
     /* Generate fibonacci hemisphere dir based on i. */
     float3 d = fibonacciHemisphere(i, _numberOfGroundIrradianceSamples);
 
-    float mu = dot(d, normalize(O));
+    float mu = dot(d, O_normalized);
 
-    float3 proj_L = normalize(L - normalize(O) * mu_l);
-    float3 proj_d = normalize(d - normalize(O) * dot(normalize(O), d));
+    float3 proj_L = normalize(L - O_normalized * mu_l);
+    float3 proj_d = normalize(d - O_normalized * dot(O_normalized, d));
     /* Take their dot product to get the cosine of the angle between them. */
     float nu = clampCosine(dot(proj_L, proj_d));
 
@@ -394,6 +396,7 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
   float mu_l = r_mu_l.y;
 
   float3 O = float3(0, r, 0);
+  float3 O_normalized = float3(0, 1, 0);
   float3 L = float3(safeSqrt(1 - mu_l * mu_l), mu_l, 0);
 
   /* Sample a bunch of directions, uniformly distributed on a sphere. */
@@ -417,8 +420,8 @@ void COMPUTE_LOCAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID) {
     float mu = d.y;
     /* Nu we can compute as we've done before: by projecting d and
      * L onto the plane defined by O and taking the dot product. */
-    float3 proj_L = normalize(L - normalize(O) * mu_l);
-    float3 proj_d = normalize(d - normalize(O) * dot(normalize(O), d));
+    float3 proj_L = normalize(L - O_normalized * mu_l);
+    float3 proj_d = normalize(d - O_normalized * dot(O_normalized, d));
     /* Take their dot product to get the cosine of the angle between them. */
     float nu = clampCosine(dot(proj_L, proj_d));
 
@@ -494,7 +497,7 @@ void COMPUTE_GLOBAL_MULTIPLE_SCATTERING (uint3 id : SV_DispatchThreadID)
   float nu = ssCoord.w;
 
   float3 O = float3(0, r, 0);
-  float3 d = normalize(float3(safeSqrt(1 - mu * mu), mu, 0));
+  float3 d = float3(safeSqrt(1 - mu * mu), mu, 0);
   float3 L = float3(nu*safeSqrt(1 - mu_l*mu_l), mu_l,
     safeSqrt(1 - nu * nu)*safeSqrt(1 - mu_l*mu_l));
 
