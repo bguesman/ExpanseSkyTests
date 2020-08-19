@@ -20,7 +20,6 @@ public class ExpanseSky : SkySettings
   /* TODO: when we finalize these, write nice descriptions. */
 
   /* Planet Parameters. */
-
   [Tooltip("Specify the total thickness of the atmosphere.")]
   public ClampedFloatParameter atmosphereThickness = new ClampedFloatParameter(40000, 0, 200000);
 
@@ -39,12 +38,6 @@ public class ExpanseSky : SkySettings
   [Tooltip("Specify a multiplier on the ground emission texture.")]
   public ClampedFloatParameter groundEmissionMultiplier = new ClampedFloatParameter(1.0f, 0.0f, 100000.0f);
 
-  [Tooltip("Specify a color to tint to the light pollution.")]
-  public ColorParameter lightPollutionTint = new ColorParameter(Color.white, hdr: false, showAlpha: false, showEyeDropper: true);
-
-  [Tooltip("Specify a multiplier on the ground emission texture.")]
-  public ClampedFloatParameter lightPollutionIntensity = new ClampedFloatParameter(0.0f, 0.0f, 10000.0f);
-
   [Tooltip("Specify the rotation of the planet textures as euler angles. This won't do anything to light directions, star rotations, etc. It is purely for rotating the planet's albedo and emissive textures.")]
   public Vector3Parameter planetRotation = new Vector3Parameter(new Vector3(0.0f, 0.0f, 0.0f));
 
@@ -60,6 +53,12 @@ public class ExpanseSky : SkySettings
 
   [Tooltip("Specify the intensity of the night sky.")]
   public ClampedFloatParameter nightIntensity = new ClampedFloatParameter(10.0f, 0.0f, 100000.0f);
+
+  [Tooltip("Specify a color to tint to the light pollution.")]
+  public ColorParameter lightPollutionTint = new ColorParameter(Color.white, hdr: false, showAlpha: false, showEyeDropper: true);
+
+  [Tooltip("Specify a multiplier on the ground emission texture.")]
+  public ClampedFloatParameter lightPollutionIntensity = new ClampedFloatParameter(0.0f, 0.0f, 10000.0f);
 
   /* Aerosol Parameters. */
   [Tooltip("Specify the scattering coefficient for Mie scattering due to aerosols.")]

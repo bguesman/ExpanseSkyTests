@@ -184,7 +184,10 @@ Shader "HDRP/Sky/ExpanseSky"
     if (intersection.groundHit) {
       /* Accumulate direct lighting. TODO: this will terminate early if
        * we encounter lights that don't affect the physical sky. */
-      for (int i = 0; i < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); i++) {
+      int i = 0;
+      int k = 0;
+      while (i < min(_DirectionalLightCount, 2 * MAX_DIRECTIONAL_LIGHTS)
+        && k < MAX_DIRECTIONAL_LIGHTS) {
         DirectionalLightData light = _DirectionalLightDatas[i];
         /* This lets us know if the light affects the physical sky. */
         if (asint(light.distanceFromCamera) >= 0) {
@@ -224,7 +227,9 @@ Shader "HDRP/Sky/ExpanseSky"
           L0 += _groundTintF3 * lightColor
             * (_skyTintF3 * 2.0 * groundIrradianceAir
               + groundIrradianceAerosol);
+          k++;
         }
+        i++;
       }
     } else {
       /* Check to see if we've hit a light. TODO: this will terminate early
@@ -232,7 +237,10 @@ Shader "HDRP/Sky/ExpanseSky"
        * this doesn't work for eclipses. */
       float minDist = -1.0;
       float3 directLight = float3(0.0, 0.0, 0.0);
-      for (int i = 0; i < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); i++) {
+      int i = 0;
+      int k = 0;
+      while (i < min(_DirectionalLightCount, 2 * MAX_DIRECTIONAL_LIGHTS)
+        && k < MAX_DIRECTIONAL_LIGHTS) {
         DirectionalLightData light = _DirectionalLightDatas[i];
         /* This lets us know if the light affects the physical sky. For some
          * reason, its sign is flipped. */
@@ -291,7 +299,10 @@ Shader "HDRP/Sky/ExpanseSky"
                 }
                 bodyAlbedo *= 1.0/PI;
 
-                for (int j = 0; j < min(MAX_DIRECTIONAL_LIGHTS, _DirectionalLightCount); j++) {
+                int j = 0;
+                int jk = 0;
+                while (j < min(_DirectionalLightCount, 2 * MAX_DIRECTIONAL_LIGHTS)
+                  && jk < MAX_DIRECTIONAL_LIGHTS) {
                   DirectionalLightData emissiveLight = _DirectionalLightDatas[j];
                   /* Body can't light itself. */
                   if (j != i && asint(emissiveLight.distanceFromCamera) >= 0) {
@@ -305,12 +316,16 @@ Shader "HDRP/Sky/ExpanseSky"
                     float3 emissiveDir = normalize(emissivePosition - bodyPosition);
                     directLight += saturate(dot(emissiveDir, bodySurfaceNormal))
                       * emissiveLight.color * bodyAlbedo;
+                    jk++;
                   }
+                  j++;
                 }
               }
             }
           }
+          k++;
         }
+        i++;
       }
       L0 += directLight;
       /* Add the stars. */
